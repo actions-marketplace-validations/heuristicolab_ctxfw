@@ -1,6 +1,6 @@
 """
 src/ctxfw/cli/__init__.py — Unified Command Line Interface Package (v3.9.0)
-Axiom Manifest Hash: 9845b97331f39b4cb728b0702dd5b56693b5588c1d129a35a9843d5b8ad8d3ca
+Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
 """
 from ctxfw.cli.main import (
     app,
@@ -27,6 +27,8 @@ from ctxfw.cli.main import (
     handle_mode_command,
     handle_report_command,
     generate_share_report,
+    handle_trace_command,
+    run_trace_verify,
 )
 
 __all__ = [
@@ -53,5 +55,7 @@ __all__ = [
     "handle_mode_command",
     "handle_report_command",
     "generate_share_report",
+    "handle_trace_command",
+    "run_trace_verify",
     "main",
 ]

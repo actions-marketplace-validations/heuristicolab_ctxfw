@@ -1,6 +1,6 @@
 """
 src/ctxfw/installer.py — Zero-Touch Industrialization & Diagnostics Engine
-Axiom Manifest Hash: 4a35e336c0621f5b76a6abb20d975bc896c15592b5da2098f2454adc6a4d66a6
+Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
 
 Provides zero-touch onboarding, idempotent IDE configuration injection,
 multiplatform pre-commit hook deployment, and comprehensive self-diagnostics.
@@ -1129,6 +1129,156 @@ def run_doctor(project_root: Optional[Path] = None) -> DoctorReport:
                 status="WARN",
                 details=f"Tree-Sitter parsers encountered warning: {e}",
                 remediation="Ensure tree-sitter language packages are installed.",
+            )
+        )
+
+    # Check 7: TraceKit Ledger Audit & Anchor Verification
+    try:
+        import sqlite3
+        from datetime import datetime, timezone
+        from ctxfw.audit.contracts import HashChainedAuditBlockDTO
+        from ctxfw.audit.store import resolve_tracekit_db_path
+        from ctxfw.audit.verifier import apply_latch, verify_chain
+        from ctxfw.kernel.clock import SystemUtcClock
+
+        tracekit_db = resolve_tracekit_db_path()
+        anchor_hash = "NONE"
+
+        anchor_candidates = []
+        if project_root:
+            anchor_candidates.append(Path(project_root) / ".tracekit.anchor")
+        anchor_candidates.append(tracekit_db.parent / ".tracekit.anchor")
+
+        for anc in anchor_candidates:
+            if anc.is_file():
+                try:
+                    txt = anc.read_text(encoding="utf-8").strip()
+                    if txt:
+                        anchor_hash = txt
+                        break
+                except Exception:
+                    pass
+
+        if not tracekit_db.is_file():
+            checks.append(
+                DoctorCheckResult(
+                    name="TraceKit Ledger Audit",
+                    status="OK",
+                    details=f"Chain status: INTACT (0 blocks). Anchor hash: {anchor_hash}.",
+                )
+            )
+        else:
+            conn = None
+            try:
+                try:
+                    uri = f"{tracekit_db.as_uri()}?mode=ro"
+                    conn = sqlite3.connect(uri, uri=True, timeout=3.0)
+                except Exception:
+                    conn = sqlite3.connect(str(tracekit_db), timeout=3.0)
+
+                cursor = conn.cursor()
+                tables = {r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if not tables:
+                    checks.append(
+                        DoctorCheckResult(
+                            name="TraceKit Ledger Audit",
+                            status="OK",
+                            details=f"Chain status: INTACT (0 blocks). Anchor hash: {anchor_hash}.",
+                        )
+                    )
+                elif "tracekit_sessions" not in tables or "tracekit_audit_blocks" not in tables:
+                    checks.append(
+                        DoctorCheckResult(
+                            name="TraceKit Ledger Audit",
+                            status="FAIL",
+                            details=f"Chain status: TAMPER_DETECTED (missing sealed tables). Anchor hash: {anchor_hash}.",
+                            remediation="Ledger schema corrupted: missing sealed tables in tracekit.db.",
+                        )
+                    )
+                else:
+                    if anchor_hash == "NONE":
+                        latest_row = cursor.execute(
+                            "SELECT current_block_hash FROM tracekit_audit_blocks ORDER BY rowid DESC LIMIT 1"
+                        ).fetchone()
+                        if latest_row and latest_row[0]:
+                            anchor_hash = latest_row[0]
+
+                    sessions = cursor.execute("SELECT session_id, genesis_hash FROM tracekit_sessions").fetchall()
+                    clock = SystemUtcClock()
+                    now_ts = clock.now()
+                    is_tampered = False
+                    total_blocks = 0
+                    broken_pos = None
+
+                    for sid, ghash in sessions:
+                        b_rows = cursor.execute(
+                            "SELECT block_id, session_id, block_seq, prev_block_hash, current_block_hash, "
+                            "intent_digest, reasoning_digest, action_digest, created_at "
+                            "FROM tracekit_audit_blocks WHERE session_id = ? ORDER BY block_seq ASC",
+                            (sid,),
+                        ).fetchall()
+                        try:
+                            blocks = [
+                                HashChainedAuditBlockDTO(
+                                    block_id=r[0],
+                                    session_id=r[1],
+                                    block_seq=r[2],
+                                    prev_block_hash=r[3],
+                                    current_block_hash=r[4],
+                                    intent_digest=r[5],
+                                    reasoning_digest=r[6],
+                                    action_digest=r[7],
+                                    timestamp_utc=datetime.strptime(r[8], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc),
+                                )
+                                for r in b_rows
+                            ]
+                        except Exception:
+                            is_tampered = True
+                            broken_pos = 0
+                            break
+                        latch_row = cursor.execute(
+                            "SELECT broken_seq FROM tracekit_verification_events WHERE session_id = ? AND is_tampered = 1 ORDER BY rowid LIMIT 1",
+                            (sid,),
+                        ).fetchone()
+                        latched_seq = latch_row[0] if latch_row else None
+                        verdict = verify_chain(sid, ghash, blocks, now_ts)
+                        verdict = apply_latch(verdict, latched_seq)
+                        total_blocks += verdict.total_blocks_audited
+                        if verdict.is_tampered:
+                            is_tampered = True
+                            broken_pos = verdict.broken_block_seq
+                            break
+
+                    if is_tampered:
+                        checks.append(
+                            DoctorCheckResult(
+                                name="TraceKit Ledger Audit",
+                                status="FAIL",
+                                details=f"Chain status: TAMPER_DETECTED (broken at seq {broken_pos}). Anchor hash: {anchor_hash}.",
+                                remediation="Ledger integrity failure: investigate unauthorized modifications to tracekit.db.",
+                            )
+                        )
+                    else:
+                        checks.append(
+                            DoctorCheckResult(
+                                name="TraceKit Ledger Audit",
+                                status="OK",
+                                details=f"Chain status: INTACT ({total_blocks} blocks). Anchor hash: {anchor_hash}.",
+                            )
+                        )
+            finally:
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+    except Exception as e:
+        checks.append(
+            DoctorCheckResult(
+                name="TraceKit Ledger Audit",
+                status="FAIL",
+                details=f"Ledger audit inspection error: {e}",
+                remediation="Ensure tracekit.db permissions and schema are intact.",
             )
         )
 
