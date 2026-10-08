@@ -1,7 +1,7 @@
 """ctxfw.audit -- TraceKit vendored blueprint (milestone 4.0-M1).
 
 CTXFW Axiomatic Gateway (this milestone): status VERIFIED | ACI 1.0000
-manifest_hash: 9cb40e606b107d1ed46d713655e7baef8565d0fb22e824ecda90e90eb82ef3d3
+manifest_hash: 5a5339ac310d5ccd6e435f0652f6294ed641815fe5e2a541a6f95c06d35646e6
 Sealed blueprint manifest_hash (TraceKit SIG-728856af9bd65ae0, VERIFIED, ACI 1.0000):
     7fe956c6456ad27a1f570080151730b426b09b4026b33c5269830925296a824c
 
@@ -12,9 +12,13 @@ Vendored, byte-for-byte, from the sealed blueprint (never edited here):
 ``.gitattributes`` pins them as ``-text`` and ``tests/test_audit_vendor.py`` re-checks their SHA-256
 against the sealed manifest (gate G9). Any contract change requires a new sealed blueprint.
 
-Not in this commit (next steps per the blueprint's fabrication directive): ``sealer.py``,
-``verifier.py``, ``store.py``. This package imports nothing at import time (lazy): the pydantic
-models in ``contracts`` load only when ``ctxfw.audit.contracts`` is imported explicitly.
+Implemented on top of the vendored files (step P2, manifest_hash 5a5339ac310d5ccd6e435f0652f6294ed641815fe5e2a541a6f95c06d35646e6):
+    sealer.py    pure 283-byte preimage sealing (no clock, no float, no I/O)
+    verifier.py  pure backward audit, fail-closed wrapper, latch rule
+    store.py     exclusive ``tracekit.db`` (WAL), 12-trigger validation, kernel-governed retry
+Not implemented yet: wiring into ``ctxfw mcp``/proxy, ``ctxfw trace verify``, the ``doctor`` anchor.
+This package imports nothing at import time (lazy): ``sealer``/``verifier``/``store`` and the pydantic
+models in ``contracts`` load only when imported explicitly.
 """
 from pathlib import Path
 
