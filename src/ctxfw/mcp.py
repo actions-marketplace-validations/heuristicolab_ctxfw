@@ -25,6 +25,14 @@ from ctxfw.storage.cache import LocalSemanticCache
 from ctxfw import __version__
 
 
+class ToolResult(dict):
+    """Tool invocation result supporting dictionary access and .isError attribute."""
+
+    @property
+    def isError(self) -> bool:
+        return bool(self.get("isError", False))
+
+
 class MCPServer:
     """Model Context Protocol server implementing JSON-RPC 2.0 over stdio."""
 
@@ -314,9 +322,13 @@ class MCPServer:
             ]
         }
 
-    def handle_tools_call(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_tools_call(
+        self, params: Any, arguments: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Dispatches tool execution with graceful error shielding and passive shadow audit."""
-        if not isinstance(params, dict):
+        if isinstance(params, str):
+            params = {"name": params, "arguments": arguments if isinstance(arguments, dict) else {}}
+        elif not isinstance(params, dict):
             params = {}
         tool_name = params.get("name")
         arguments = params.get("arguments")
@@ -452,7 +464,7 @@ class MCPServer:
             }
 
         self._record_shadow_audit(params, result)
-        return result
+        return ToolResult(result)
 
     def dispatch(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Processes a single JSON-RPC 2.0 request."""

@@ -121,6 +121,10 @@ class AppendOutcome:
         else:
             raise ValueError("append outcomes are APPENDED or REJECTED_INVALID only")
 
+    @property
+    def is_rejected(self) -> bool:
+        return self.state is not LedgerState.APPENDED or self.quarantined
+
 
 def resolve_tracekit_db_path(environ: Optional[Mapping[str, str]] = None) -> Path:
     """``CTXFW_TRACEKIT_DB`` override, else ``tracekit.db`` next to the canonical ``tokens.db``."""

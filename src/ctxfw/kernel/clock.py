@@ -9,7 +9,7 @@ Audit code receives a ``Clock``; only the *host* composition root builds ``Syste
 from datetime import datetime, timedelta, timezone
 from typing import Protocol, runtime_checkable
 
-__all__ = ["Clock", "FixedClock", "SystemUtcClock", "require_utc"]
+__all__ = ["Clock", "FixedClock", "SystemClock", "SystemUtcClock", "require_utc"]
 
 
 def require_utc(value: object) -> datetime:
@@ -35,6 +35,9 @@ class SystemUtcClock:
 
     def now(self) -> datetime:
         return datetime.now(timezone.utc)
+
+
+SystemClock = SystemUtcClock
 
 
 class FixedClock:
