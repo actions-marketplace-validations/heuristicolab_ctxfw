@@ -1,2 +1,8 @@
 *.sh text eol=lf
 install.sh text eol=lf
+
+# 4.0-M1: TraceKit vendored blueprint files must stay byte-for-byte identical (SHA-256 gate G9);
+# core.autocrlf=true on Windows would otherwise rewrite line endings.
+src/ctxfw/audit/contracts.py -text
+src/ctxfw/audit/schema.sql -text
+src/ctxfw/audit/blueprint_manifest.json -text
