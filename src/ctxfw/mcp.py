@@ -1,6 +1,7 @@
+# manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 """
 src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v3.4.0)
-Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
+manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 Exposes deterministic context pruning and topological bundle resolution
 to AI agents (Cursor, Claude Code, Windsurf) using JSON-RPC 2.0.
 """
@@ -11,7 +12,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from ctxfw.core.contracts import (
     OptimizationRequestDTO,
@@ -45,11 +46,18 @@ class MCPServer:
         cache: Optional[LocalSemanticCache] = None,
         tracekit_store: Optional[Any] = None,
         session_id: Optional[str] = None,
+        rules_store: Optional[Any] = None,
+        tokencast_store: Optional[Any] = None,
+        guards: Optional[Any] = None,
     ):
         self.running = True
         self.cache = cache or LocalSemanticCache()
         self._tracekit_store = tracekit_store
+        self._rules_store = rules_store
+        self._tokencast_store = tokencast_store
+        self._guards = tuple(guards) if guards is not None else ()
         self.session_id = session_id or os.environ.get("CTXFW_SESSION_ID")
+        self._enforce_seq = 0
 
     def _get_tracekit_store(self):
         """Lazily initialize TraceKitStore on canonical or overridden tracekit.db path."""
@@ -60,6 +68,48 @@ class MCPServer:
             db_path = resolve_tracekit_db_path()
             self._tracekit_store = TraceKitStore(db_path, clock=SystemUtcClock())
         return self._tracekit_store
+
+    def _get_rules_store(self):
+        """Lazily initialize RulesStore on canonical rules.db path."""
+        if self._rules_store is None:
+            from ctxfw.rules.store import RulesStore
+            from ctxfw.storage.cache import get_canonical_cache_path
+
+            db_path = Path(get_canonical_cache_path()).parent / "rules.db"
+            self._rules_store = RulesStore(db_path)
+        return self._rules_store
+
+    def _get_tokencast_store(self):
+        """Lazily initialize TokenCastStore on canonical tokencast.db path."""
+        if self._tokencast_store is None:
+            from ctxfw.budget.store import TokenCastStore
+            from ctxfw.storage.cache import get_canonical_cache_path
+
+            db_path = Path(get_canonical_cache_path()).parent / "tokencast.db"
+            self._tokencast_store = TokenCastStore(db_path)
+        return self._tokencast_store
+
+    def _get_active_guards(self, project_root: Optional[Path] = None) -> tuple[Any, ...]:
+        """Load active compiled guards from instance, store, or workspace rule files."""
+        if self._guards:
+            return self._guards
+        store = self._get_rules_store()
+        guards = tuple(store.get_all_guards())
+        if guards:
+            return guards
+        if project_root and project_root.is_dir():
+            for rule_name in ("CLAUDE.md", ".cursorrules"):
+                rf = project_root / rule_name
+                if rf.is_file():
+                    try:
+                        from ctxfw.rules.compiler import RulesCompiler
+
+                        manifest, _, _ = RulesCompiler.compile_file(rf)
+                        store.persist_manifest(manifest)
+                        return manifest.guards
+                    except Exception:
+                        pass
+        return ()
 
     def _record_shadow_audit(self, params: Dict[str, Any], result: Dict[str, Any]) -> None:
         """
@@ -249,6 +299,14 @@ class MCPServer:
                                 "type": "string",
                                 "description": "Root directory of the project. Defaults to target file's directory.",
                             },
+                            "breaker_state": {
+                                "type": "string",
+                                "description": "Optional circuit breaker state (CLOSED, TRIPPED, HALTED) or decision kind",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session identifier (SES-...) to connect with TokenCast budget tracking",
+                            },
                         },
                         "required": ["target_file"],
                     },
@@ -325,7 +383,7 @@ class MCPServer:
     def handle_tools_call(
         self, params: Any, arguments: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Dispatches tool execution with graceful error shielding and passive shadow audit."""
+        """Dispatches tool execution with closed-loop security enforcement, budget degradation, and shadow audit."""
         if isinstance(params, str):
             params = {"name": params, "arguments": arguments if isinstance(arguments, dict) else {}}
         elif not isinstance(params, dict):
@@ -334,6 +392,130 @@ class MCPServer:
         arguments = params.get("arguments")
         if not isinstance(arguments, dict):
             arguments = {}
+
+        session_id = (
+            arguments.get("session_id")
+            or params.get("session_id")
+            or self.session_id
+        )
+        if not session_id or not re.match(r"^SES-[A-Za-z0-9_-]{4,64}$", str(session_id)):
+            from ctxfw.kernel.contracts import new_session_id
+
+            self.session_id = new_session_id()
+            session_id = self.session_id
+
+        user_prompt = (
+            arguments.get("user_prompt")
+            or arguments.get("prompt")
+            or f"MCP tool call: {tool_name}"
+        )
+
+        # 1. Closed-Loop Security Pre-Execution Interception
+        from ctxfw.rules.enforcer import RulesEnforcer, normalize_path
+        from ctxfw.rules.contracts import EnforcementVerdict
+
+        # 1a. Extract candidate paths to validate against traversal
+        candidate_paths: list[tuple[str, str]] = []
+        for p_key in ("path", "target_file", "project_root"):
+            val = arguments.get(p_key)
+            if val is not None and isinstance(val, str) and val.strip():
+                candidate_paths.append((p_key, val.strip()))
+
+        traversal_violation: Optional[str] = None
+        offending_path: Optional[str] = None
+        for p_key, p_val in candidate_paths:
+            try:
+                normalize_path(p_val)
+            except ValueError as exc:
+                traversal_violation = f"Path traversal attempt or invalid encoding detected in argument '{p_key}': {p_val} ({exc})"
+                offending_path = p_val
+                break
+
+        blocked_reason: Optional[str] = None
+        rule_store = self._get_rules_store()
+
+        if traversal_violation:
+            blocked_reason = traversal_violation
+            self._enforce_seq += 1
+            sys_guard = rule_store.ensure_system_guard()
+            eval_guards = (sys_guard,) + tuple(self._get_active_guards())
+            offending_call = f"{tool_name} {offending_path or ''}".strip()
+            try:
+                rule_store.enforce_and_log(
+                    eval_guards,
+                    offending_call,
+                    seq=self._enforce_seq,
+                )
+            except Exception:
+                pass
+        else:
+            # 1b. Check active rule guards against raw tool call
+            proj_root_path = None
+            if arguments.get("project_root"):
+                try:
+                    proj_root_path = Path(arguments["project_root"]).resolve()
+                except Exception:
+                    pass
+            elif arguments.get("target_file"):
+                try:
+                    proj_root_path = Path(arguments["target_file"]).resolve().parent
+                except Exception:
+                    pass
+            elif arguments.get("path"):
+                try:
+                    proj_root_path = Path(arguments["path"]).resolve().parent
+                except Exception:
+                    pass
+
+            if proj_root_path is None:
+                try:
+                    proj_root_path = Path.cwd()
+                except Exception:
+                    pass
+
+            active_guards = self._get_active_guards(project_root=proj_root_path)
+            if active_guards:
+                args_repr = " ".join(
+                    str(v)
+                    for k, v in arguments.items()
+                    if isinstance(v, (str, int, float)) and not isinstance(v, bool)
+                )
+                raw_tool_call = f"{tool_name} {args_repr}".strip()
+
+                self._enforce_seq += 1
+                verdict, matched_ids = rule_store.enforce_and_log(
+                    active_guards, raw_tool_call, seq=self._enforce_seq
+                )
+                if verdict is EnforcementVerdict.BLOCKED:
+                    blocked_reason = f"Security rule guard violated: {', '.join(matched_ids) if matched_ids else 'policy match'}"
+
+        if blocked_reason:
+            try:
+                tracekit = self._get_tracekit_store()
+                tracekit.record_step(
+                    session_id=session_id,
+                    user_prompt=str(user_prompt)[:65536],
+                    plan_summary=f"Security policy enforcement on {tool_name}",
+                    tool_or_file="rules.enforcer",
+                    payload=f"SECURITY_VIOLATION: {blocked_reason}",
+                )
+            except Exception as exc:
+                try:
+                    sys.stderr.write(f"[TraceKit Security Error] {exc}\n")
+                    sys.stderr.flush()
+                except Exception:
+                    pass
+
+            return ToolResult({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"POLICY_BLOCKED: Security violation detected by RulesEnforcer: {blocked_reason}",
+                    }
+                ],
+                "isError": True,
+                "policyViolation": True,
+            })
 
         result: Dict[str, Any]
         try:
@@ -420,7 +602,13 @@ class MCPServer:
                             project_root = target_file.parent.resolve()
 
                         firewall = ContextFirewallEngine(project_root=project_root, cache=self.cache)
-                        bundle = firewall.build_context(target_file)
+                        bundle = firewall.build_context(
+                            target_file,
+                            breaker_state=arguments.get("breaker_state"),
+                            session_id=session_id,
+                            tokencast_store=self._get_tokencast_store(),
+                            tracekit_store=self._get_tracekit_store(),
+                        )
 
                         result = {
                             "content": [{"type": "text", "text": bundle.to_prompt()}],
@@ -568,6 +756,16 @@ class MCPServer:
             if self._tracekit_store is not None:
                 try:
                     self._tracekit_store.close()
+                except Exception:
+                    pass
+            if self._rules_store is not None:
+                try:
+                    self._rules_store.close()
+                except Exception:
+                    pass
+            if self._tokencast_store is not None:
+                try:
+                    self._tokencast_store.close()
                 except Exception:
                     pass
 

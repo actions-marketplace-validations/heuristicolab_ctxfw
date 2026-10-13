@@ -6,7 +6,7 @@
 [![PyPI - Version](https://img.shields.io/badge/PyPI-v4.0.0a1-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
 [![PyPI - Downloads](https://img.shields.io/pepy/dt/ctxfw?style=for-the-badge&logo=pypi&logoColor=white&color=007ec6)](https://pepy.tech/project/ctxfw)
 [![Axiomatic Completeness Index](https://img.shields.io/badge/ACI-1.0000_VERIFIED-000000?style=for-the-badge&logo=shield)](https://ctxfw.heuristicolab.com)
-[![Tests](https://img.shields.io/badge/TESTS-341%2F341_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
+[![Tests](https://img.shields.io/badge/TESTS-347%2F347_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
 

@@ -1,4 +1,4 @@
-# manifest_hash: 862e0dc20133fe81f2ce12812b86d74068db80cce8566a3b71d2d406db72c549
+# manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 """
 Claude Rules Compiler :: Rules Store
 ====================================
@@ -16,9 +16,12 @@ from typing import Any, Callable, TypeVar, Union
 
 from ctxfw.rules import load_schema_sql
 from ctxfw.rules.contracts import (
+    INTENT_TO_PATTERN,
     CompiledAstGuardDTO,
     CompiledRuleManifestDTO,
     EnforcementVerdict,
+    PatternType,
+    RuleIntent,
 )
 from ctxfw.rules.enforcer import RulesEnforcer
 
@@ -238,6 +241,49 @@ class RulesStore:
                 }
                 for r in cur.fetchall()
             ]
+
+        return self._execute_with_retry(_query)
+
+    def ensure_system_guard(self) -> CompiledAstGuardDTO:
+        """Ensure a sealed system security guard exists for baseline traversal and policy enforcement."""
+        from ctxfw.rules.compiler import RulesCompiler
+
+        manifest, _, _ = RulesCompiler.compile_text(
+            "CLAUDE.md", "- do not modify `system/security/traversal`\n"
+        )
+        if manifest is not None:
+            self.persist_manifest(manifest)
+            return manifest.guards[0]
+        raise RuntimeError("Failed to compile system security guard")
+
+    def get_all_guards(self) -> list[CompiledAstGuardDTO]:
+        """Fetch all compiled guards across all manifests."""
+        def _query(conn: sqlite3.Connection) -> list[CompiledAstGuardDTO]:
+            cur = conn.execute(
+                """
+                SELECT guard_id, manifest_id, rule_intent, target_expression
+                FROM compiled_ast_guards
+                ORDER BY rowid ASC
+                """
+            )
+            guards: list[CompiledAstGuardDTO] = []
+            for r in cur.fetchall():
+                try:
+                    intent = RuleIntent(r[2])
+                    gid = r[0]
+                    rid = f"RULE-{gid[4:]}" if gid.startswith("GRD-") else f"RULE-{gid}"
+                    guards.append(
+                        CompiledAstGuardDTO(
+                            guard_id=gid,
+                            rule_id=rid,
+                            pattern_type=INTENT_TO_PATTERN[intent],
+                            target_symbol_or_path=r[3],
+                            is_strict_deny=True,
+                        )
+                    )
+                except Exception:
+                    continue
+            return guards
 
         return self._execute_with_retry(_query)
 
