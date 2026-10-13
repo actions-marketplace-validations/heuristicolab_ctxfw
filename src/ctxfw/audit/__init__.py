@@ -16,7 +16,7 @@ Implemented on top of the vendored files (step P2, manifest_hash 5a5339ac310d5cc
     sealer.py    pure 283-byte preimage sealing (no clock, no float, no I/O)
     verifier.py  pure backward audit, fail-closed wrapper, latch rule
     store.py     exclusive ``tracekit.db`` (WAL), 12-trigger validation, kernel-governed retry
-Not implemented yet: wiring into ``ctxfw mcp``/proxy, ``ctxfw trace verify``, the ``doctor`` anchor.
+Native integration: wired into ``ctxfw mcp``/proxy, ``ctxfw trace verify``, and the ``doctor`` anchor backed by an exclusive SQLite WAL ledger.
 This package imports nothing at import time (lazy): ``sealer``/``verifier``/``store`` and the pydantic
 models in ``contracts`` load only when imported explicitly.
 """

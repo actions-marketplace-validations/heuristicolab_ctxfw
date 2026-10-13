@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ctxfw"
-version = "3.9.1"
+version = "4.0.0a1"
 description = "Deterministic Context Firewall & AST Ambient Pruner for AI Coding Agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,7 +45,10 @@ include = [
     "/src/ctxfw",
     "/README.md",
     "/LICENSE",
-    "/pyproject.toml"
+    "/pyproject.toml",
+    "/.gitattributes",
+    "/glama.json",
+    "/SPEC.axioms.md"
 ]
 exclude = [
     "/benchmarks",
@@ -59,3 +62,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["src", "."]
 addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning:starlette.testclient"
+]
