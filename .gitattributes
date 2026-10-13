@@ -16,3 +16,8 @@ src/ctxfw/budget/blueprint_manifest.json -text
 src/ctxfw/rules/contracts.py -text
 src/ctxfw/rules/schema.sql -text
 src/ctxfw/rules/blueprint_manifest.json -text
+
+# 4.0-M3: SARA Induction Firewall vendored blueprint files (Gate G9)
+src/ctxfw/sara/contracts.py -text
+src/ctxfw/sara/schema.sql -text
+src/ctxfw/sara/blueprint_manifest.json -text
