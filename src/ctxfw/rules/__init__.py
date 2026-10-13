@@ -1,7 +1,8 @@
-"""ctxfw.rules -- Claude Rules Compiler vendored blueprint (milestone 4.0-M2).
+# manifest_hash: 862e0dc20133fe81f2ce12812b86d74068db80cce8566a3b71d2d406db72c549
+"""ctxfw.rules -- Claude Rules Compiler vendored blueprint and sovereign engine (milestone 4.0-M2).
 
 CTXFW Axiomatic Gateway (milestone M2): status VERIFIED | ACI 1.0000
-manifest_hash: 66f8c88b0407bc071195d430d5f467a35d4de570bc5e8c9069dc51e96d11d1f5
+manifest_hash: 862e0dc20133fe81f2ce12812b86d74068db80cce8566a3b71d2d406db72c549
 Sealed blueprint manifest_hash (Claude Rules Compiler SIG-1d0a63f087edb904, VERIFIED, ACI 1.0000):
     b5b8e1cd10ce8beeed6b076f4726d19b361a6ce2f5d480c2bb2aa437986822d3
 
@@ -12,15 +13,27 @@ Vendored, byte-for-byte, from the sealed blueprint (never edited here):
 ``.gitattributes`` pins them as ``-text`` and ``tests/test_rules_vendor.py`` re-checks their SHA-256
 against the sealed manifest (gate G9). Any contract change requires a new sealed blueprint.
 
-Exported contracts and types:
+Implemented engines:
+    extractor.py <- extract_normative_clauses
+    compiler.py  <- RulesCompiler
+    enforcer.py  <- RulesEnforcer, normalize_path, audit_source
+    store.py     <- RulesStore
+
+Exported contracts, engines and types:
     NaturalLanguageRuleDTO (aliased as DirectiveRule)
     RuleIntent (aliased as RuleClassifier)
     EnforcementVerdict
+    RulesCompiler
+    RulesEnforcer
+    RulesStore
+    extract_normative_clauses
+    normalize_path
+    audit_source
     RuleSourceFileDTO, CompiledAstGuardDTO, RuleComplianceAuditDTO, CompiledRuleManifestDTO
     FileFormat, PatternType, FailureClass, CompilerState, CompilerEvent, transition, etc.
 
-This package imports nothing heavy at import time (lazy): pydantic models and helper functions
-in ``contracts`` load only upon attribute access or direct submodule import.
+This package imports nothing heavy at import time (lazy): pydantic models and engines
+load only upon attribute access or direct submodule import.
 """
 from __future__ import annotations
 
@@ -35,6 +48,13 @@ __all__ = [
     "SCHEMA_PATH",
     "load_manifest",
     "load_schema_sql",
+    # Engines:
+    "RulesCompiler",
+    "RulesEnforcer",
+    "RulesStore",
+    "extract_normative_clauses",
+    "normalize_path",
+    "audit_source",
     # Architecture directive aliases:
     "DirectiveRule",
     "RuleClassifier",
@@ -88,6 +108,22 @@ def load_manifest() -> dict[str, Any]:
 
 
 def __getattr__(name: str) -> Any:
+    if name == "RulesCompiler":
+        from . import compiler
+
+        return getattr(compiler, name)
+    if name in {"RulesEnforcer", "normalize_path", "audit_source"}:
+        from . import enforcer
+
+        return getattr(enforcer, name)
+    if name == "RulesStore":
+        from . import store
+
+        return getattr(store, name)
+    if name == "extract_normative_clauses":
+        from . import extractor
+
+        return getattr(extractor, name)
     if name in _ALIASES:
         from . import contracts
 
@@ -104,6 +140,7 @@ def __dir__() -> list[str]:
 
 
 if TYPE_CHECKING:
+    from .compiler import RulesCompiler
     from .contracts import (
         COMPILER_TRANSITIONS,
         FAILURE_ROUTING,
@@ -131,6 +168,9 @@ if TYPE_CHECKING:
         sha256_hex,
         transition,
     )
+    from .enforcer import RulesEnforcer, audit_source, normalize_path
+    from .extractor import extract_normative_clauses
+    from .store import RulesStore
 
     DirectiveRule = NaturalLanguageRuleDTO
     RuleClassifier = RuleIntent

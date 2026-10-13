@@ -1,7 +1,8 @@
-"""ctxfw.budget -- TokenCast Budgeter vendored blueprint (milestone 4.0-M2).
+# manifest_hash: 862e0dc20133fe81f2ce12812b86d74068db80cce8566a3b71d2d406db72c549
+"""ctxfw.budget -- TokenCast Budgeter vendored blueprint and sovereign engine (milestone 4.0-M2).
 
 CTXFW Axiomatic Gateway (milestone M2): status VERIFIED | ACI 1.0000
-manifest_hash: 66f8c88b0407bc071195d430d5f467a35d4de570bc5e8c9069dc51e96d11d1f5
+manifest_hash: 862e0dc20133fe81f2ce12812b86d74068db80cce8566a3b71d2d406db72c549
 Sealed blueprint manifest_hash (TokenCast SIG-947678205487bc66, VERIFIED, ACI 1.0000):
     7b7ef06dfc91c02c73bf8117efd362ffecd01cffdb9d0e5a8700be01c874bdae
 
@@ -12,17 +13,25 @@ Vendored, byte-for-byte, from the sealed blueprint (never edited here):
 ``.gitattributes`` pins them as ``-text`` and ``tests/test_tokencast_vendor.py`` re-checks their SHA-256
 against the sealed manifest (gate G9). Any contract change requires a new sealed blueprint.
 
-Exported contracts and types:
+Implemented engines:
+    forecaster.py  <- TokenCastForecaster, predict_token_trajectory
+    breaker.py     <- CircuitBreaker
+    store.py       <- TokenCastStore
+
+Exported contracts, engines and types:
     SessionTokenBudgetDTO (aliased as TokenBudget)
     TokenTrajectoryForecastDTO (aliased as CostProjection)
     BreakerState (aliased as CircuitBreakerState)
     BreakerEvent (aliased as CircuitBreakerEvent)
+    TokenCastForecaster, predict_token_trajectory
+    CircuitBreaker
+    TokenCastStore
     TurnObservationTelemetryDTO
     BudgetEnforcementDecisionDTO
     DecisionKind, FailureClass, transition, estimate_cost_usd, etc.
 
-This package imports nothing heavy at import time (lazy): pydantic models and helper functions
-in ``contracts`` load only upon attribute access or direct submodule import.
+This package imports nothing heavy at import time (lazy): pydantic models and engines
+load only upon attribute access or direct submodule import.
 """
 from __future__ import annotations
 
@@ -37,6 +46,11 @@ __all__ = [
     "SCHEMA_PATH",
     "load_manifest",
     "load_schema_sql",
+    # Engines:
+    "TokenCastForecaster",
+    "predict_token_trajectory",
+    "CircuitBreaker",
+    "TokenCastStore",
     # Architecture directive aliases:
     "TokenBudget",
     "CostProjection",
@@ -87,6 +101,18 @@ def load_manifest() -> dict[str, Any]:
 
 
 def __getattr__(name: str) -> Any:
+    if name in {"TokenCastForecaster", "predict_token_trajectory"}:
+        from . import forecaster
+
+        return getattr(forecaster, name)
+    if name == "CircuitBreaker":
+        from . import breaker
+
+        return getattr(breaker, name)
+    if name == "TokenCastStore":
+        from . import store
+
+        return getattr(store, name)
     if name in _ALIASES:
         from . import contracts
 
@@ -103,6 +129,7 @@ def __dir__() -> list[str]:
 
 
 if TYPE_CHECKING:
+    from .breaker import CircuitBreaker
     from .contracts import (
         FAILURE_DISPOSITION,
         FAILURE_ROUTING,
@@ -123,6 +150,8 @@ if TYPE_CHECKING:
         estimate_cost_usd,
         transition,
     )
+    from .forecaster import TokenCastForecaster, predict_token_trajectory
+    from .store import TokenCastStore
 
     TokenBudget = SessionTokenBudgetDTO
     CostProjection = TokenTrajectoryForecastDTO
