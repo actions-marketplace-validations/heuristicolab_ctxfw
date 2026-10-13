@@ -2,6 +2,8 @@
 """
 SARA Runtime Authorization Gate :: Deterministic Policy & FSM Enforcement
 =========================================================================
+manifest_hash (M3-P2): 8f925c1e7c680c7af68e6f3daa48a5ac734923438762ed8836878a97508ce42e
+manifest_hash (M3-P3): 8d94151e921e2f8eaacb440cb3c1b0d4e0ff6ac80fa217e5830de1c1edec1b13
 Evaluates untrusted tool observations against immutable allowlist policies
 (AuthorizedPolicyDTO), emits AuthorizationVerdictDTO (ALLOW, STRIP_COMMANDS,
 QUARANTINE_TOOL), tracks the total FSM transition trace delta(S, E), and
@@ -159,8 +161,7 @@ class RuntimeAuthorizationGate:
         )
 
         # 3. FSM transition according to escape detection and risk thresholds
-        if has_hidden_escape:
-            risk_score = max(risk_score, RISK_QUARANTINE_THRESHOLD)
+        if has_hidden_escape and risk_score >= RISK_QUARANTINE_THRESHOLD:
             state = transition(state, SaraEvent.ESCAPE_PATTERN_DETECTED)
             trace.append(state)
         else:

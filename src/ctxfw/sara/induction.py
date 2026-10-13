@@ -2,6 +2,8 @@
 """
 SARA Action Induction Parser :: Deterministic Directive Extraction & Risk Scoring
 =================================================================================
+manifest_hash (M3-P2): 8f925c1e7c680c7af68e6f3daa48a5ac734923438762ed8836878a97508ce42e
+manifest_hash (M3-P3): 8d94151e921e2f8eaacb440cb3c1b0d4e0ff6ac80fa217e5830de1c1edec1b13
 Scans untrusted tool observations for imperative shell commands, file path access,
 role-override injections, and hidden escape sequences. Computes a deterministic
 risk_score in [0.0, 1.0] (strictly rejecting NaN/Inf) under default-deny policy rules.
@@ -48,6 +50,15 @@ _HIDDEN_RE = re.compile(
     r"|\x1b(?:\[[0-9;?]*[A-Za-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|\([0-9A-Za-z]|[@-Z\\-_])"
 )
 
+# High-risk hidden escapes: Trojan-Source Bidi overrides and OSC / non-CSI escape sequences
+_CRITICAL_HIDDEN_RE = re.compile(
+    r"[\u202a-\u202e\u2066-\u2069]"
+    r"|\\u202[a-e]|\\u206[6-9]"
+    r"|\x1b(?!\[)"
+    r"|\\x1b(?!\[)",
+    re.IGNORECASE,
+)
+
 # 2. Role override & prompt context escape markers
 _ROLE_RE = re.compile(
     r"(?:</?system>|<\|im_start\|>|<\|im_end\|>|<\|system\|>|\[/?INST\]|</?tool_call>"
@@ -56,29 +67,46 @@ _ROLE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 3. High-risk destructive shell commands & pipe-to-shell sinks
+_ROLE_CLOSING_RE = re.compile(
+    r"^(?:</system>|\[/INST\]|</tool_call>|<\|im_end\|>)$",
+    re.IGNORECASE,
+)
+
+_ROLE_IGNORE_RE = re.compile(
+    r"\bignore\s+(?:all\s+)?(?:previous|prior)\s+instructions\b",
+    re.IGNORECASE,
+)
+
+_ROLE_OPENING_RE = re.compile(
+    r"(?:<system>|<\|im_start\|>|<\|system\|>|\[INST\]|<tool_call>|\b(?:System|Assistant|Developer):)",
+    re.IGNORECASE,
+)
+
+# 3. High-risk destructive shell commands, pipe-to-shell sinks, subshells & command chaining
 _DESTRUCTIVE_RE = re.compile(
     r"(?:\brm\s+(?:-[a-zA-Z]*[rf][a-zA-Z]*|--(?:recursive|force))(?:\s+[^\n;`|]+)?"
-    r"|\b(?:curl|wget)\b[^\n|;`]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b"
-    r"|\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b"
+    r"|\b(?:curl|wget)\b[^\n|;`]*\|\s*(?:sudo\s+)?(?:/usr/bin/|/bin/)?(?:ba|z|da|k)?sh\b"
+    r"|\|\s*(?:sudo\s+)?(?:/usr/bin/|/bin/)?(?:ba|z|da|k)?sh\b"
     r"|\bsudo\s+[^\n;`|]+"
     r"|\bmkfs(?:\.[a-z0-9]+)?\b[^\n;`|]*"
     r"|\bdd\s+if=[^\n;`|]+"
     r"|\bchmod\s+(?:777|[ugo]*\+s)\b[^\n;`|]*"
     r"|\bgit\s+(?:push\b[^\n;`|]*--force|push\s+-f|reset\s+--hard)\b"
     r"|:\(\)\{\s*:\|:&\s*\};:"
-    r"|\b(?:nc|ncat)\s+[^\n;`|]*-e\s+/bin/(?:ba)?sh\b)",
+    r"|\b(?:nc|ncat)\s+[^\n;`|]*-e\s+/bin/(?:ba)?sh\b"
+    r"|\$\(\s*(?:/[a-zA-Z0-9_./-]+/)?(?:ls|cat|grep|find|git|echo|head|tail|wc|pwd|env|export|python3?|pip|npm|node|docker|kubectl|curl|wget|bash|sh|chmod|chown|kill|cp|mv|rm|sudo|whoami|id|uname|ps|netstat|tar|ssh|scp|nc|ncat|socat|awk|perl|ruby|php)\b[^)\n]*\)"
+    r"|(?:;|\|\||&&)\s*(?:/[a-zA-Z0-9_./-]+/)?(?:ls|pwd|whoami|id|uname|env|printenv|bash|sh|cat|curl|wget|rm|sudo|nc|ncat)\b[^\n;`|&]*)",
     re.IGNORECASE,
 )
 
 # 4. Imperative / general shell command invocations (including subshell $(...) and non-flag rm)
 _IMPERATIVE_RE = re.compile(
     r"(?:`((?:ls|cat|grep|find|git|echo|head|tail|wc|pwd|env|export|python3?|pip|npm|node|docker|kubectl|curl|wget|bash|sh|chmod|chown|kill|cp|mv|rm|sudo|whoami|id|uname|ps|netstat|tar|ssh|scp|nc|ncat|socat)\b[^`\n]*)`"
-    r"|\$\(\s*((?:ls|cat|grep|find|git|echo|head|tail|wc|pwd|env|export|python3?|pip|npm|node|docker|kubectl|curl|wget|bash|sh|chmod|chown|kill|cp|mv|rm|sudo|whoami|id|uname|ps|netstat|tar|ssh|scp|nc|ncat|socat)\b[^)\n]*)\)"
-    r"|\b(?:please\s+)?(?:run|execute|invoke|exec)\s*:\s*([a-z][a-z0-9_.-]*(?:\s+[^\n;`]*)?)"
-    r"|\b((?:ls|grep|git|chmod|chown|kubectl|docker|wget|curl|pip|npm|whoami|uname|netstat|printenv|ssh|scp|nc|ncat|socat|rm)(?:\s+[^\n;`|&]+)+)"
+    r"|\$\(\s*((?:/[a-zA-Z0-9_./-]+/)?(?:ls|cat|grep|find|git|echo|head|tail|wc|pwd|env|export|python3?|pip|npm|node|docker|kubectl|curl|wget|bash|sh|chmod|chown|kill|cp|mv|rm|sudo|whoami|id|uname|ps|netstat|tar|ssh|scp|nc|ncat|socat|awk|perl|ruby|php)\b[^)\n]*)\)"
+    r"|\b(?:please\s+)?(?:run|execute|invoke|exec)\s*:\s*(?!(?:bool|int|float|str|bytes|list|dict|set|tuple|object|type|none|any|optional|union|sequence|mapping|callable|iterable|iterator|final|literal|classvar|path)\b)(?![a-z_][a-z0-9_]*\s*(?:[=,)\[]|->))([a-z/][a-z0-9_./-]*(?:\s+[^\n;`]*)?)"
+    r"|(?<!\bimport\s)(?<!\bfrom\s)(?<!\bdef\s)(?<!\bclass\s)\b((?:ls|grep|git|chmod|chown|kubectl|docker|wget|curl|pip|npm|whoami|uname|netstat|printenv|ssh|scp|nc|ncat|socat|rm)\s+(?![=:(\[,]|(?:import|in|is|and|or|not|as)\b)[^\n;`|&]+)"
     r"|\b((?:cat|find|echo|head|tail|kill|cp|mv|rm|bash|sh|python3?)\s+(?:-[a-zA-Z0-9-]+|/[a-zA-Z0-9_./-]+|\.\.?/[a-zA-Z0-9_./-]+|\.[a-zA-Z0-9_.-]+|['\"][^\n'\"]+['\"])[^\n;`|&]*)"
-    r"|(?:^|[;|]|&&|\|\|)\s*((?:ls|pwd|whoami|id|uname|env|printenv|bash|sh)\b[^\n;`|&]*))",
+    r"|(?:^|[;|]|&&|\|\|)\s*((?:ls|pwd|whoami|id|uname|env|printenv|bash|sh)\b(?:\s+(?![=:(.,\[])[^\n;`|&]*)?(?=\s*(?:$|[;|`&]))))",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -196,21 +224,41 @@ class InductionParser:
     def compute_risk_score(cls, directives: Sequence[InductionDirectiveDTO]) -> float:
         """Compute deterministic risk score in [0.0, 1.0] from extracted directives.
 
-        Weights:
-          - 0.80: HIDDEN_ESCAPE, ROLE_OVERRIDE, and destructive SHELL_COMMAND (_DESTRUCTIVE_RE)
+        Calibrated weights:
+          - 0.80: Trojan-Source Bidi overrides / OSC escapes, and destructive SHELL_COMMAND (_DESTRUCTIVE_RE)
+          - 0.50: Explicit 'ignore (all )?(previous|prior) instructions' clause in ROLE_OVERRIDE
           - 0.45: SHELL_COMMAND or FILE_PATH_ACCESS outside allowlist
+          - 0.35: Opening/standalone ROLE_OVERRIDE delimiters (<system>, [INST], <tool_call>, etc.)
+                  and standard zero-width / ANSI CSI HIDDEN_ESCAPE sequences
           - 0.30: SHELL_COMMAND inside allowlist (untrusted observation never carries authority)
-          - 0.00: FILE_PATH_ACCESS inside allowlist
+          - 0.00: Closing ROLE_OVERRIDE tags (</system>, [/INST], </tool_call>, <|im_end|>)
+                  and FILE_PATH_ACCESS inside allowlist
         """
         risk = 0.0
+        has_standard_hidden = False
+        has_opening_role = False
+
         for d in directives:
             if not isinstance(d, InductionDirectiveDTO):
                 raise TypeError(f"Expected InductionDirectiveDTO, got {type(d).__name__}")
             if math.isnan(d.confidence) or math.isinf(d.confidence):
                 raise ValueError("directive confidence shall never be NaN or Inf")
 
-            if d.directive_kind in (DirectiveKind.HIDDEN_ESCAPE, DirectiveKind.ROLE_OVERRIDE):
-                risk += 0.80
+            if d.directive_kind is DirectiveKind.HIDDEN_ESCAPE:
+                if _CRITICAL_HIDDEN_RE.search(d.directive_text):
+                    risk += 0.80
+                else:
+                    has_standard_hidden = True
+            elif d.directive_kind is DirectiveKind.ROLE_OVERRIDE:
+                text_stripped = d.directive_text.strip()
+                if _ROLE_CLOSING_RE.match(text_stripped):
+                    has_opening_role = True
+                    continue
+                matched_ignore = bool(_ROLE_IGNORE_RE.search(text_stripped))
+                if matched_ignore:
+                    risk += 0.50
+                if not matched_ignore or _ROLE_OPENING_RE.search(text_stripped):
+                    has_opening_role = True
             elif d.directive_kind is DirectiveKind.SHELL_COMMAND:
                 if _DESTRUCTIVE_RE.search(d.directive_text):
                     risk += 0.80
@@ -221,6 +269,11 @@ class InductionParser:
             elif d.directive_kind is DirectiveKind.FILE_PATH_ACCESS:
                 if not d.within_allowlist:
                     risk += 0.45
+
+        if has_standard_hidden:
+            risk += 0.35
+        if has_opening_role:
+            risk += 0.35
 
         if math.isnan(risk) or math.isinf(risk):
             raise ValueError("risk_score shall never be NaN or Inf")

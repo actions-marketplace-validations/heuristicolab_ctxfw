@@ -2,6 +2,8 @@
 """
 SARA Lexical Sanitizer :: Deterministic NFKC & Escape Normalization Engine
 ==========================================================================
+manifest_hash (M3-P2): 8f925c1e7c680c7af68e6f3daa48a5ac734923438762ed8836878a97508ce42e
+manifest_hash (M3-P3): 8d94151e921e2f8eaacb440cb3c1b0d4e0ff6ac80fa217e5830de1c1edec1b13
 Normalizes untrusted tool observations via Unicode NFKC, strips zero-width,
 invisible, and bidirectional override characters, removes ANSI CSI escape
 sequences, enforces the 64 KB ceiling and NUL-byte prohibition, and flags
@@ -12,7 +14,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Any, Sequence, Tuple
 
 from ctxfw.sara.contracts import MAX_RAW_OUTPUT_CHARS
 
@@ -46,6 +48,15 @@ ROLE_OVERRIDE_RE = re.compile(
     r"|\b(?:System|Assistant|Developer):"
     r"|\bignore\s+(?:all\s+)?(?:previous|prior)\s+instructions\b)",
     re.IGNORECASE,
+)
+
+# Paired role-override block delimiters stripped during STRIP_COMMANDS neutralization
+_ROLE_BLOCK_RE = re.compile(
+    r"(?:<system>.*?</system>"
+    r"|\[INST\].*?\[/INST\]"
+    r"|<tool_call>.*?</tool_call>"
+    r"|<\|im_start\|>.*?<\|im_end\|>)",
+    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -208,6 +219,44 @@ class LexicalSanitizer:
     def detect_role_overrides(cls, raw: str) -> Tuple[str, ...]:
         """Return all role-override and context-escape markers detected after sanitization."""
         return cls.sanitize(raw, reject_null_bytes=False).role_override_markers
+
+    @classmethod
+    def neutralize(cls, raw_text: str, directives: Sequence[Any] = ()) -> str:
+        """Deterministically neutralize medium-risk directives and role overrides for STRIP_COMMANDS.
+
+        Steps:
+          1. Apply LexicalSanitizer.sanitize(raw_text).sanitized_text (stripping zero-width/bidi/ANSI).
+          2. Strip paired role-override blocks (<system>...</system>, [INST]...[/INST], <tool_call>...</tool_call>)
+             and standalone matches of ROLE_OVERRIDE_RE.
+          3. Strip un-allowlisted directive_text entries from directives without corrupting identifiers.
+        """
+        cleaned = cls.sanitize(raw_text, reject_null_bytes=False).sanitized_text
+        cleaned = _ROLE_BLOCK_RE.sub("", cleaned)
+        cleaned = ROLE_OVERRIDE_RE.sub("", cleaned)
+        for d in directives:
+            if not getattr(d, "within_allowlist", False):
+                kind = getattr(d, "directive_kind", None)
+                kind_val = getattr(kind, "value", str(kind)) if kind is not None else ""
+                d_text = getattr(d, "directive_text", "")
+                if d_text and kind_val != "HIDDEN_ESCAPE":
+                    esc = re.escape(d_text)
+                    wrapped_pat = (
+                        r"(?:`\s*" + esc + r"\s*`"
+                        r"|\b(?:please\s+)?(?:run|execute|invoke|exec)\s*:\s*" + esc + r")"
+                    )
+                    cleaned = re.sub(wrapped_pat, "", cleaned, flags=re.IGNORECASE)
+                    prefix_guard = (
+                        r"(?<![a-zA-Z0-9_])"
+                        if d_text[0].isalnum() or d_text[0] == "_"
+                        else ""
+                    )
+                    suffix_guard = (
+                        r"(?![a-zA-Z0-9_])"
+                        if d_text[-1].isalnum() or d_text[-1] == "_"
+                        else ""
+                    )
+                    cleaned = re.sub(prefix_guard + esc + suffix_guard, "", cleaned)
+        return cleaned
 
 
 ReferenceLexicalSanitizer = LexicalSanitizer

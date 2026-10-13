@@ -1,7 +1,7 @@
-# manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
+# manifest_hash: 8d94151e921e2f8eaacb440cb3c1b0d4e0ff6ac80fa217e5830de1c1edec1b13
 """
 src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v3.4.0)
-manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
+manifest_hash: 8d94151e921e2f8eaacb440cb3c1b0d4e0ff6ac80fa217e5830de1c1edec1b13
 Exposes deterministic context pruning and topological bundle resolution
 to AI agents (Cursor, Claude Code, Windsurf) using JSON-RPC 2.0.
 """
@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import sys
 from typing import Any, Dict, Optional, Sequence
+import uuid
 
 from ctxfw.core.contracts import (
     OptimizationRequestDTO,
@@ -49,12 +50,16 @@ class MCPServer:
         rules_store: Optional[Any] = None,
         tokencast_store: Optional[Any] = None,
         guards: Optional[Any] = None,
+        sara_store: Optional[Any] = None,
+        sara_policy: Optional[Any] = None,
     ):
         self.running = True
         self.cache = cache or LocalSemanticCache()
         self._tracekit_store = tracekit_store
         self._rules_store = rules_store
         self._tokencast_store = tokencast_store
+        self._sara_store = sara_store
+        self._sara_policy = sara_policy
         self._guards = tuple(guards) if guards is not None else ()
         self.session_id = session_id or os.environ.get("CTXFW_SESSION_ID")
         self._enforce_seq = 0
@@ -88,6 +93,58 @@ class MCPServer:
             db_path = Path(get_canonical_cache_path()).parent / "tokencast.db"
             self._tokencast_store = TokenCastStore(db_path)
         return self._tokencast_store
+
+    def _get_sara_store(self):
+        """Lazily initialize SaraStore on canonical sara.db path."""
+        if self._sara_store is None:
+            from ctxfw.sara.store import SaraStore
+            from ctxfw.storage.cache import get_canonical_cache_path
+
+            env_db = os.environ.get("CTXFW_SARA_DB")
+            if env_db:
+                db_path = Path(env_db)
+            else:
+                db_path = Path(get_canonical_cache_path()).parent / "sara.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._sara_store = SaraStore(db_path)
+        return self._sara_store
+
+    def _get_sara_policy(self, tool_name: str):
+        """Resolve active SARA AuthorizationPolicyRuleDTO for the given MCP tool."""
+        from ctxfw.sara.contracts import AuthorizationPolicyRuleDTO
+
+        if self._sara_policy is not None:
+            if isinstance(self._sara_policy, dict):
+                if tool_name in self._sara_policy:
+                    cand = self._sara_policy[tool_name]
+                    if isinstance(cand, AuthorizationPolicyRuleDTO):
+                        return cand
+                    if isinstance(cand, dict):
+                        return AuthorizationPolicyRuleDTO(**cand)
+                    return cand
+                if "policy_id" in self._sara_policy:
+                    data = dict(self._sara_policy)
+                    data["tool_name"] = tool_name
+                    return AuthorizationPolicyRuleDTO(**data)
+            elif isinstance(self._sara_policy, AuthorizationPolicyRuleDTO):
+                if self._sara_policy.tool_name == tool_name:
+                    return self._sara_policy
+                return AuthorizationPolicyRuleDTO(
+                    policy_id=self._sara_policy.policy_id,
+                    tool_name=tool_name,
+                    allowed_commands=self._sara_policy.allowed_commands,
+                    allowed_path_prefixes=self._sara_policy.allowed_path_prefixes,
+                    policy_mask=self._sara_policy.policy_mask,
+                )
+            else:
+                return self._sara_policy
+        return AuthorizationPolicyRuleDTO(
+            policy_id=f"POL-mcp-{tool_name[:48]}",
+            tool_name=tool_name,
+            allowed_commands=(),
+            allowed_path_prefixes=(),
+            policy_mask=0,
+        )
 
     def _get_active_guards(self, project_root: Optional[Path] = None) -> tuple[Any, ...]:
         """Load active compiled guards from instance, store, or workspace rule files."""
@@ -380,6 +437,228 @@ class MCPServer:
             ]
         }
 
+    def _enforce_sara_observation(
+        self,
+        *,
+        tool_name: str,
+        output_text: str,
+        raw_sources: Sequence[str] = (),
+        session_id: str,
+        user_prompt: str,
+    ) -> Dict[str, Any]:
+        """Inspect and authorize untrusted tool output via the closed-loop SARA pipeline."""
+        from ctxfw.sara.audit import derive_quarantine_id
+        from ctxfw.sara.contracts import (
+            MAX_DIRECTIVES_PER_OBSERVATION,
+            MAX_RAW_OUTPUT_CHARS,
+            AuthorizationVerdictDTO,
+            RawToolObservationDTO,
+            SaraState,
+            SourceType,
+            ToolExecutionSourceDTO,
+            VerdictKind,
+            observation_digest,
+            verdict_for_risk,
+        )
+        from ctxfw.sara.gate import RuntimeAuthorizationGate, _build_violation_reason
+        from ctxfw.sara.induction import InductionParser
+        from ctxfw.sara.lexical import LexicalSanitizer
+
+        execution_id = f"EXE-{uuid.uuid4().hex[:16]}"
+        safe_prompt = str(user_prompt)[:65536] if user_prompt is not None else ""
+        if not safe_prompt.strip():
+            safe_prompt = f"MCP tool call: {tool_name}"
+
+        sara_store = None
+
+        try:
+            sara_store = self._get_sara_store()
+            policy = self._get_sara_policy(tool_name)
+
+            LexicalSanitizer.validate_raw(output_text)
+            for src in raw_sources:
+                LexicalSanitizer.validate_raw(src)
+
+            source_dto = ToolExecutionSourceDTO(
+                tool_name=tool_name,
+                source_type=SourceType.FILE_READ,
+                execution_id=execution_id,
+            )
+            obs_dto = RawToolObservationDTO.from_raw(
+                source=source_dto,
+                raw_output=output_text,
+            )
+            verdict, trace = RuntimeAuthorizationGate.authorize_traced(obs_dto, policy)
+            all_verdicts = [verdict]
+
+            for src in raw_sources:
+                if src == output_text:
+                    continue
+                src_obs = RawToolObservationDTO.from_raw(
+                    source=source_dto,
+                    raw_output=src,
+                )
+                src_verdict, src_trace = RuntimeAuthorizationGate.authorize_traced(
+                    src_obs, policy
+                )
+                all_verdicts.append(src_verdict)
+                if src_verdict.risk_score > verdict.risk_score:
+                    obs_dto = src_obs
+                    verdict = src_verdict
+                    trace = src_trace
+
+            # Merge distinct directives across output_text and all raw_sources
+            merged_directives = list(verdict.directives)
+            seen_keys = {
+                (d.directive_kind, d.directive_text, d.within_allowlist)
+                for d in merged_directives
+            }
+            for v in all_verdicts:
+                for d in v.directives:
+                    key = (d.directive_kind, d.directive_text, d.within_allowlist)
+                    if (
+                        key not in seen_keys
+                        and len(merged_directives) < MAX_DIRECTIVES_PER_OBSERVATION
+                    ):
+                        seen_keys.add(key)
+                        merged_directives.append(d)
+
+            if len(merged_directives) > len(verdict.directives):
+                merged_tuple = tuple(merged_directives[:MAX_DIRECTIVES_PER_OBSERVATION])
+                merged_risk = max(
+                    verdict.risk_score,
+                    InductionParser.compute_risk_score(merged_tuple),
+                )
+                merged_kind = verdict_for_risk(merged_risk)
+                tool_mismatch = policy.tool_name != source_dto.tool_name
+                merged_reason = _build_violation_reason(
+                    merged_kind,
+                    merged_risk,
+                    merged_tuple,
+                    tool_mismatch,
+                )
+                verdict = AuthorizationVerdictDTO(
+                    execution_id=execution_id,
+                    tool_name=tool_name,
+                    verdict=merged_kind,
+                    risk_score=merged_risk,
+                    directives=merged_tuple,
+                    violation_reason=merged_reason,
+                )
+
+            sara_store.audit_commit(
+                obs_dto,
+                verdict,
+                state=trace[-1] if trace else None,
+            )
+        except Exception as exc:
+            reason = f"Fail-closed quarantine ({type(exc).__name__}): {exc}".strip()[:512]
+            if not reason:
+                reason = "Fail-closed quarantine: invalid observation or runtime fault"
+            verdict = AuthorizationVerdictDTO(
+                execution_id=execution_id,
+                tool_name=tool_name,
+                verdict=VerdictKind.QUARANTINE_TOOL,
+                risk_score=1.0,
+                directives=(),
+                violation_reason=reason,
+            )
+            raw_for_quarantine = (
+                output_text if isinstance(output_text, str) else str(output_text)
+            )
+            for src in raw_sources:
+                if isinstance(src, str) and (
+                    len(src) > MAX_RAW_OUTPUT_CHARS or "\x00" in src
+                ):
+                    raw_for_quarantine = src
+                    break
+            bounded_raw = raw_for_quarantine.replace("\x00", "")[:MAX_RAW_OUTPUT_CHARS]
+            try:
+                if sara_store is None:
+                    sara_store = self._get_sara_store()
+                sara_store.audit_commit_fail_closed(
+                    verdict,
+                    observation_sha256=observation_digest(bounded_raw),
+                    raw_output=bounded_raw,
+                    state=SaraState.QUARANTINED,
+                )
+            except Exception as audit_exc:
+                try:
+                    sys.stderr.write(f"[SARA Audit Error] {audit_exc}\n")
+                    sys.stderr.flush()
+                except Exception:
+                    pass
+
+        if verdict.verdict is VerdictKind.ALLOW:
+            clean_text = LexicalSanitizer.sanitize(
+                output_text, reject_null_bytes=True
+            ).sanitized_text
+            return {
+                "content": [{"type": "text", "text": clean_text}],
+                "isError": False,
+            }
+
+        if verdict.verdict is VerdictKind.STRIP_COMMANDS:
+            neutralized_text = LexicalSanitizer.neutralize(
+                output_text, verdict.directives
+            )
+            try:
+                tracekit = self._get_tracekit_store()
+                tracekit.record_step(
+                    session_id=session_id,
+                    user_prompt=safe_prompt,
+                    plan_summary=f"SARA runtime authorization gate on {tool_name}",
+                    tool_or_file="sara.gate",
+                    payload=f"SARA_STRIPPED: {verdict.violation_reason}",
+                )
+            except Exception as tk_exc:
+                try:
+                    sys.stderr.write(f"[TraceKit SARA Error] {tk_exc}\n")
+                    sys.stderr.flush()
+                except Exception:
+                    pass
+
+            return {
+                "content": [{"type": "text", "text": neutralized_text}],
+                "isError": False,
+                "saraVerdict": "STRIP_COMMANDS",
+                "saraStripped": True,
+            }
+
+        quarantine_id = derive_quarantine_id(verdict.execution_id)
+        try:
+            tracekit = self._get_tracekit_store()
+            tracekit.record_step(
+                session_id=session_id,
+                user_prompt=safe_prompt,
+                plan_summary=f"SARA runtime authorization gate on {tool_name}",
+                tool_or_file="sara.gate",
+                payload=f"SARA_QUARANTINED: {verdict.violation_reason}",
+            )
+        except Exception as tk_exc:
+            try:
+                sys.stderr.write(f"[TraceKit SARA Error] {tk_exc}\n")
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "SARA_QUARANTINED: Indirect prompt injection or unauthorized "
+                        f"action induction detected: {verdict.violation_reason}"
+                    ),
+                }
+            ],
+            "isError": True,
+            "saraQuarantined": True,
+            "saraVerdict": "QUARANTINE_TOOL",
+            "quarantineId": quarantine_id,
+            "policyViolation": True,
+        }
+
     def handle_tools_call(
         self, params: Any, arguments: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -404,11 +683,14 @@ class MCPServer:
             self.session_id = new_session_id()
             session_id = self.session_id
 
-        user_prompt = (
+        raw_user_prompt = (
             arguments.get("user_prompt")
             or arguments.get("prompt")
             or f"MCP tool call: {tool_name}"
         )
+        user_prompt = str(raw_user_prompt)[:65536]
+        if not user_prompt.strip():
+            user_prompt = f"MCP tool call: {tool_name}"
 
         # 1. Closed-Loop Security Pre-Execution Interception
         from ctxfw.rules.enforcer import RulesEnforcer, normalize_path
@@ -534,51 +816,68 @@ class MCPServer:
                             "isError": True,
                         }
                     else:
-                        code = file_path.read_text(encoding="utf-8")
-                        depth_val = arguments.get("depth", "interface").lower()
-                        depth_enum = PruningDepth(depth_val) if depth_val in PruningDepth._value2member_map_ else PruningDepth.INTERFACE
-                        strip_docs = bool(arguments.get("strip_docs", False))
-                        lang_val = arguments.get("language", "python").lower()
-                        lang_enum = SupportedLanguage(lang_val) if lang_val in SupportedLanguage._value2member_map_ else SupportedLanguage.PYTHON
+                        from ctxfw.sara.contracts import MAX_RAW_OUTPUT_CHARS
 
-                        cache_key = LocalSemanticCache.generate_key(
-                            source_code=code,
-                            rules_version=DeterministicContextPruner.RULES_VERSION,
-                            strip_docs=strip_docs,
-                            depth=depth_enum.value,
-                            language=lang_enum.value,
-                        )
-                        cached = self.cache.get(cache_key)
-                        if cached is not None:
-                            result = {
-                                "content": [{"type": "text", "text": cached.pruned_code}],
-                                "isError": False,
-                            }
+                        try:
+                            code = file_path.read_text(encoding="utf-8")
+                        except UnicodeDecodeError:
+                            code = "\x00<corrupted_utf8_observation>"
+
+                        if len(code) > MAX_RAW_OUTPUT_CHARS or "\x00" in code:
+                            result = self._enforce_sara_observation(
+                                tool_name="prune_file",
+                                output_text=code,
+                                raw_sources=(code,),
+                                session_id=session_id,
+                                user_prompt=str(user_prompt),
+                            )
                         else:
-                            req = OptimizationRequestDTO(
-                                source_code=code,
-                                language=lang_enum,
-                                strip_docs=strip_docs,
-                                depth=depth_enum,
-                                sanitize_raises=True,
-                            )
-                            pruned_code, orig_c, pruned_c, saved, pct, ms = DeterministicContextPruner.prune(req)
-                            dto = OptimizationResultDTO(
-                                pruned_code=pruned_code,
-                                original_chars=orig_c,
-                                pruned_chars=pruned_c,
-                                estimated_tokens_saved=saved,
-                                savings_percentage=pct,
-                                cache_hit=False,
-                                execution_ms=ms,
-                                depth=depth_enum,
-                            )
-                            self.cache.set(cache_key, dto)
+                            depth_val = arguments.get("depth", "interface").lower()
+                            depth_enum = PruningDepth(depth_val) if depth_val in PruningDepth._value2member_map_ else PruningDepth.INTERFACE
+                            strip_docs = bool(arguments.get("strip_docs", False))
+                            lang_val = arguments.get("language", "python").lower()
+                            lang_enum = SupportedLanguage(lang_val) if lang_val in SupportedLanguage._value2member_map_ else SupportedLanguage.PYTHON
 
-                            result = {
-                                "content": [{"type": "text", "text": pruned_code}],
-                                "isError": False,
-                            }
+                            cache_key = LocalSemanticCache.generate_key(
+                                source_code=code,
+                                rules_version=DeterministicContextPruner.RULES_VERSION,
+                                strip_docs=strip_docs,
+                                depth=depth_enum.value,
+                                language=lang_enum.value,
+                            )
+                            cached = self.cache.get(cache_key)
+                            dto: Optional[OptimizationResultDTO] = None
+                            if cached is not None:
+                                pruned_code = cached.pruned_code
+                            else:
+                                req = OptimizationRequestDTO(
+                                    source_code=code,
+                                    language=lang_enum,
+                                    strip_docs=strip_docs,
+                                    depth=depth_enum,
+                                    sanitize_raises=True,
+                                )
+                                pruned_code, orig_c, pruned_c, saved, pct, ms = DeterministicContextPruner.prune(req)
+                                dto = OptimizationResultDTO(
+                                    pruned_code=pruned_code,
+                                    original_chars=orig_c,
+                                    pruned_chars=pruned_c,
+                                    estimated_tokens_saved=saved,
+                                    savings_percentage=pct,
+                                    cache_hit=False,
+                                    execution_ms=ms,
+                                    depth=depth_enum,
+                                )
+
+                            result = self._enforce_sara_observation(
+                                tool_name="prune_file",
+                                output_text=pruned_code,
+                                raw_sources=(code,),
+                                session_id=session_id,
+                                user_prompt=str(user_prompt),
+                            )
+                            if dto is not None and not result.get("saraQuarantined"):
+                                self.cache.set(cache_key, dto)
 
             elif tool_name == "resolve_context_bundle":
                 target_file_str = arguments.get("target_file")
@@ -595,25 +894,63 @@ class MCPServer:
                             "isError": True,
                         }
                     else:
-                        project_root_str = arguments.get("project_root")
-                        if project_root_str:
-                            project_root = Path(project_root_str).resolve()
+                        from ctxfw.sara.contracts import MAX_RAW_OUTPUT_CHARS
+
+                        try:
+                            target_raw = target_file.read_text(encoding="utf-8")
+                        except UnicodeDecodeError:
+                            target_raw = "\x00<corrupted_utf8_observation>"
+
+                        if len(target_raw) > MAX_RAW_OUTPUT_CHARS or "\x00" in target_raw:
+                            result = self._enforce_sara_observation(
+                                tool_name="resolve_context_bundle",
+                                output_text=target_raw,
+                                raw_sources=(target_raw,),
+                                session_id=session_id,
+                                user_prompt=str(user_prompt),
+                            )
                         else:
-                            project_root = target_file.parent.resolve()
+                            project_root_str = arguments.get("project_root")
+                            if project_root_str:
+                                project_root = Path(project_root_str).resolve()
+                            else:
+                                project_root = target_file.parent.resolve()
 
-                        firewall = ContextFirewallEngine(project_root=project_root, cache=self.cache)
-                        bundle = firewall.build_context(
-                            target_file,
-                            breaker_state=arguments.get("breaker_state"),
-                            session_id=session_id,
-                            tokencast_store=self._get_tokencast_store(),
-                            tracekit_store=self._get_tracekit_store(),
-                        )
+                            firewall = ContextFirewallEngine(project_root=project_root, cache=self.cache)
+                            bundle = firewall.build_context(
+                                target_file,
+                                breaker_state=arguments.get("breaker_state"),
+                                session_id=session_id,
+                                tokencast_store=self._get_tokencast_store(),
+                                tracekit_store=self._get_tracekit_store(),
+                            )
 
-                        result = {
-                            "content": [{"type": "text", "text": bundle.to_prompt()}],
-                            "isError": False,
-                        }
+                            raw_sources_list: list[str] = [target_raw]
+                            candidate_rels = list(bundle.entries.keys())
+                            try:
+                                for rel_p, dist in firewall.graph.get_distances(target_file).items():
+                                    if dist <= 3 and rel_p not in candidate_rels:
+                                        candidate_rels.append(rel_p)
+                            except Exception:
+                                pass
+
+                            for rel_path in candidate_rels:
+                                dep_path = (project_root / rel_path).resolve()
+                                if dep_path.is_file():
+                                    try:
+                                        dep_raw = dep_path.read_text(encoding="utf-8")
+                                    except UnicodeDecodeError:
+                                        dep_raw = "\x00<corrupted_utf8_observation>"
+                                    if dep_raw not in raw_sources_list:
+                                        raw_sources_list.append(dep_raw)
+
+                            result = self._enforce_sara_observation(
+                                tool_name="resolve_context_bundle",
+                                output_text=bundle.to_prompt(),
+                                raw_sources=tuple(raw_sources_list),
+                                session_id=session_id,
+                                user_prompt=str(user_prompt),
+                            )
 
             elif tool_name == "evaluate_spec_axioms":
                 brief_text = arguments.get("brief_text")
@@ -651,7 +988,8 @@ class MCPServer:
                 "isError": True,
             }
 
-        self._record_shadow_audit(params, result)
+        if not result.get("saraQuarantined"):
+            self._record_shadow_audit(params, result)
         return ToolResult(result)
 
     def dispatch(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -766,6 +1104,11 @@ class MCPServer:
             if self._tokencast_store is not None:
                 try:
                     self._tokencast_store.close()
+                except Exception:
+                    pass
+            if self._sara_store is not None:
+                try:
+                    self._sara_store.close()
                 except Exception:
                     pass
 
