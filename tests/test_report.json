@@ -2,8 +2,8 @@
   "project_id": "heuristico-core-optimizer",
   "order_id": "ord-2026-4f003b",
   "suite_status": "PASSED",
-  "passed_count": 356,
+  "passed_count": 374,
   "failed_count": 0,
   "duration_seconds": 0.0,
-  "timestamp": "2026-10-13T19:54:07.447561+00:00"
+  "timestamp": "2026-10-13T20:41:35.870417+00:00"
 }

@@ -1,8 +1,8 @@
-# manifest_hash: 46c18f0959a0f31e56e83b719078e1331678c6ed972bdbc93ef075205f583f98
-"""ctxfw.sara -- SARA Action Induction Runtime Authorization vendored blueprint (milestone 4.0-M3).
+# manifest_hash: 8f925c1e7c680c7af68e6f3daa48a5ac734923438762ed8836878a97508ce42e
+"""ctxfw.sara -- SARA Action Induction Runtime Authorization vendored blueprint and sovereign engines (milestone 4.0-M3).
 
-CTXFW Axiomatic Gateway (milestone M3): status VERIFIED | ACI 1.0000
-manifest_hash: 46c18f0959a0f31e56e83b719078e1331678c6ed972bdbc93ef075205f583f98
+CTXFW Axiomatic Gateway (milestone M3-P2): status VERIFIED | ACI 1.0000
+manifest_hash: 8f925c1e7c680c7af68e6f3daa48a5ac734923438762ed8836878a97508ce42e
 Sealed blueprint manifest_hash (SARA SIG-0d2acf53b92882b0, VERIFIED, ACI 1.0000):
     51d819312f8dd802981a7b7d97b9d6397316738ded76c94161a9f147411c94ea
 
@@ -13,7 +13,18 @@ Vendored, byte-for-byte, from the sealed blueprint (never edited here):
 ``.gitattributes`` pins them as ``-text`` and ``tests/test_sara_vendor.py`` re-checks their SHA-256
 against the sealed manifest (gate G9). Any contract change requires a new sealed blueprint.
 
-Exported contracts and types:
+Implemented engines (M3-P2):
+    lexical.py    <- LexicalSanitizer, SanitizationResult
+    induction.py  <- InductionParser
+    gate.py       <- RuntimeAuthorizationGate
+    audit.py      <- AuditSink, derive_quarantine_id
+    store.py      <- SaraStore
+
+Exported contracts, engines and types:
+    LexicalSanitizer, SanitizationResult
+    InductionParser
+    RuntimeAuthorizationGate
+    AuditSink, SaraStore, derive_quarantine_id
     UntrustedObservationDTO (aliased to RawToolObservationDTO)
     AuthorizedPolicyDTO (aliased to AuthorizationPolicyRuleDTO)
     ToolExecutionSourceDTO
@@ -21,23 +32,12 @@ Exported contracts and types:
     InductionDirectiveDTO
     AuthorizationPolicyRuleDTO
     AuthorizationVerdictDTO
-    SourceType
-    VerdictKind
-    DirectiveKind
-    FailureClass
-    SaraState
-    SaraEvent
-    TERMINAL_STATES
-    SARA_TRANSITIONS
-    FAILURE_ROUTING
-    SaraBaseDTO
-    transition
-    verdict_for_risk
-    observation_digest
-    load_schema_sql
-    load_manifest
+    SourceType, VerdictKind, DirectiveKind, FailureClass, SaraState, SaraEvent
+    TERMINAL_STATES, SARA_TRANSITIONS, FAILURE_ROUTING
+    SaraBaseDTO, transition, verdict_for_risk, observation_digest
+    load_schema_sql, load_manifest
 
-This package imports nothing heavy at import time (lazy): pydantic models and helper functions
+This package imports nothing heavy at import time (lazy): pydantic models, engines and helper functions
 load only upon attribute access or direct submodule import.
 """
 from __future__ import annotations
@@ -53,6 +53,15 @@ __all__ = [
     "SCHEMA_PATH",
     "load_manifest",
     "load_schema_sql",
+    # Sovereign engines:
+    "LexicalSanitizer",
+    "ReferenceLexicalSanitizer",
+    "SanitizationResult",
+    "InductionParser",
+    "RuntimeAuthorizationGate",
+    "AuditSink",
+    "SaraStore",
+    "derive_quarantine_id",
     # Architecture directive aliases:
     "UntrustedObservationDTO",
     "AuthorizedPolicyDTO",
@@ -78,6 +87,7 @@ __all__ = [
     # Constants:
     "MAX_RAW_OUTPUT_CHARS",
     "MAX_DIRECTIVES_PER_OBSERVATION",
+    "MAX_DIRECTIVES_PER_OBS",
     "MAX_DIRECTIVE_TEXT_CHARS",
     "MAX_POLICY_ITEMS",
     "MAX_POLICY_ITEM_CHARS",
@@ -96,9 +106,12 @@ CONTRACTS_PATH = PACKAGE_DIR / "contracts.py"
 SCHEMA_PATH = PACKAGE_DIR / "schema.sql"
 MANIFEST_PATH = PACKAGE_DIR / "blueprint_manifest.json"
 
+_SUBMODULES = frozenset({"contracts", "lexical", "induction", "gate", "audit", "store"})
+
 _ALIASES: dict[str, str] = {
     "UntrustedObservationDTO": "RawToolObservationDTO",
     "AuthorizedPolicyDTO": "AuthorizationPolicyRuleDTO",
+    "MAX_DIRECTIVES_PER_OBS": "MAX_DIRECTIVES_PER_OBSERVATION",
 }
 
 
@@ -113,12 +126,32 @@ def load_manifest() -> dict[str, Any]:
 
 
 def __getattr__(name: str) -> Any:
-    if name == "contracts":
+    if name in _SUBMODULES:
         import importlib
 
-        mod = importlib.import_module(f"{__name__}.contracts")
-        globals()["contracts"] = mod
+        mod = importlib.import_module(f"{__name__}.{name}")
+        globals()[name] = mod
         return mod
+    if name in {"LexicalSanitizer", "ReferenceLexicalSanitizer", "SanitizationResult"}:
+        from . import lexical
+
+        return getattr(lexical, name)
+    if name == "InductionParser":
+        from . import induction
+
+        return getattr(induction, name)
+    if name == "RuntimeAuthorizationGate":
+        from . import gate
+
+        return getattr(gate, name)
+    if name in {"AuditSink", "derive_quarantine_id"}:
+        from . import audit
+
+        return getattr(audit, name)
+    if name == "SaraStore":
+        from . import store
+
+        return getattr(store, name)
     if name in _ALIASES:
         from . import contracts
 
@@ -131,12 +164,14 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals().keys()) | set(__all__))
+    return sorted(set(globals().keys()) | set(__all__) | set(_SUBMODULES))
 
 
 if TYPE_CHECKING:
+    from .audit import AuditSink, derive_quarantine_id
     from .contracts import (
         EXECUTION_ID_PATTERN,
+        FAILURE_ROUTING,
         GATE_LATENCY_BUDGET_MS,
         MAX_DIRECTIVE_TEXT_CHARS,
         MAX_DIRECTIVES_PER_OBSERVATION,
@@ -167,6 +202,10 @@ if TYPE_CHECKING:
         transition,
         verdict_for_risk,
     )
+    from .gate import RuntimeAuthorizationGate
+    from .induction import MAX_DIRECTIVES_PER_OBS, InductionParser
+    from .lexical import LexicalSanitizer, SanitizationResult
+    from .store import SaraStore
 
     UntrustedObservationDTO = RawToolObservationDTO
     AuthorizedPolicyDTO = AuthorizationPolicyRuleDTO
