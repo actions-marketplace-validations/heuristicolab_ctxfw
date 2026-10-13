@@ -1,0 +1,39 @@
+{
+  "blueprint_id": "BP-SIG-947678205487bc66-TOKENCAST-BUDGETER",
+  "signal_id": "SIG-947678205487bc66",
+  "proposal_id": "PROP-947678205487bc66-H1",
+  "horizon": "HORIZON_1",
+  "architecture_standard": "HEURISTICO_LAB_SOVEREIGN_BLUEPRINT_V2",
+  "ctxfw": {
+    "status": "VERIFIED",
+    "aci_score": 1.0,
+    "manifest_hash": "7b7ef06dfc91c02c73bf8117efd362ffecd01cffdb9d0e5a8700be01c874bdae"
+  },
+  "deliverables": {
+    "specs/1_mermaid_dag.md": {
+      "sha256": "a4081a8e7e78efc39f082c3e914588f95c9b2808332d19789a7329335445acb2"
+    },
+    "specs/2_pydantic_contracts.py": {
+      "sha256": "4ac36c42e0173f9f6d58e31dd857128dec452a9b37ce8f826bfbc42e4b597fac"
+    },
+    "specs/3_schema_ddl.sql": {
+      "sha256": "eaf5befdc878c5b834b041f4297293c1a3a090cd18847692e5d8beaac2083fb8"
+    },
+    "specs/4_pytest_tdd_matrix.py": {
+      "sha256": "77210426518c6abfd20852a5c8621951916659b9ef41f7b1973fe190f8f0d6dc"
+    },
+    "specs/5_fabrication_directive.md": {
+      "sha256": "146272ac95d7b2d3969059b4fe8ff414c8429611fff45a42d5825ff58a1d8aeb"
+    }
+  },
+  "merkle_root_sha256": "67dc80c44b74b06e39025f9a729d447432641d46278ba9b07ef7c7165058c51c",
+  "hermetic_compiler": {
+    "ast_valid": true,
+    "ddl_valid": true,
+    "semantic_gate_enforced": true,
+    "passed_tests": 46,
+    "warnings": 0,
+    "execution_time_ms": 78.289
+  },
+  "generated_at": "2026-10-06T23:12:51Z"
+}

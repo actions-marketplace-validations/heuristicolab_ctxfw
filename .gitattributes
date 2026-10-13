@@ -6,3 +6,13 @@ install.sh text eol=lf
 src/ctxfw/audit/contracts.py -text
 src/ctxfw/audit/schema.sql -text
 src/ctxfw/audit/blueprint_manifest.json -text
+
+# 4.0-M2: TokenCast vendored blueprint files (Gate G9)
+src/ctxfw/budget/contracts.py -text
+src/ctxfw/budget/schema.sql -text
+src/ctxfw/budget/blueprint_manifest.json -text
+
+# 4.0-M2: Claude Rules Compiler vendored blueprint files (Gate G9)
+src/ctxfw/rules/contracts.py -text
+src/ctxfw/rules/schema.sql -text
+src/ctxfw/rules/blueprint_manifest.json -text
