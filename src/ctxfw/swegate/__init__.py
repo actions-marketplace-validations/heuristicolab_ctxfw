@@ -1,6 +1,8 @@
-# manifest_hash: f65c9e8fcc9152df8275d94641f7e9d4c8bd8e88072359102e32b1e849187710
-"""ctxfw.swegate -- SWE-Gate CI Verifier vendored blueprint contracts and schema (milestone 4.0-M4).
+# manifest_hash: ebc799476bea4d97c21b2118259a632ab897ac4572d75abcaaa91d066de0e83c
+"""ctxfw.swegate -- SWE-Gate CI Verifier vendored blueprint contracts, schema, and sovereign engines (milestone 4.0-M4).
 
+CTXFW Axiomatic Gateway (milestone M4-P2): status VERIFIED | ACI 1.0000
+manifest_hash: ebc799476bea4d97c21b2118259a632ab897ac4572d75abcaaa91d066de0e83c
 CTXFW Axiomatic Gateway (milestone M4-P1): status VERIFIED | ACI 1.0000
 manifest_hash: f65c9e8fcc9152df8275d94641f7e9d4c8bd8e88072359102e32b1e849187710
 Sealed blueprint manifest_hash (SWE-Gate SIG-673052a2a791ec2b, VERIFIED, ACI 1.0000):
@@ -13,7 +15,13 @@ Vendored, byte-for-byte, from the sealed blueprint (never edited here):
 ``.gitattributes`` pins them as ``-text`` and ``tests/test_swegate_vendor.py`` re-checks their SHA-256
 against the sealed manifest (gate G9). Any contract change requires a new sealed blueprint.
 
-This package imports nothing heavy at import time (lazy): pydantic models and helper functions
+Implemented engines (M4-P2):
+    inspector.py  <- SweGateInspector, ReferenceInspector, parse_diff, count_decisions, extract_imports, inspect_patch
+    gate.py       <- SweGateVerifier, evaluate_patch
+    store.py      <- SweGateStore, persist_evaluation, persist_with_retry
+    audit.py      <- SweGateAuditSink, SweGateStore, persist_evaluation, persist_with_retry
+
+This package imports nothing heavy at import time (lazy): pydantic models, engines, and helper functions
 load only upon attribute access or direct submodule import.
 """
 from __future__ import annotations
@@ -29,6 +37,19 @@ __all__ = [
     "SCHEMA_PATH",
     "load_manifest",
     "load_schema_sql",
+    # Sovereign engines (M4-P2):
+    "SweGateInspector",
+    "ReferenceInspector",
+    "parse_diff",
+    "count_decisions",
+    "extract_imports",
+    "inspect_patch",
+    "SweGateVerifier",
+    "evaluate_patch",
+    "SweGateStore",
+    "SweGateAuditSink",
+    "persist_evaluation",
+    "persist_with_retry",
     # DTOs:
     "SweGateBaseDTO",
     "PatchMetadataDTO",
@@ -99,7 +120,21 @@ CONTRACTS_PATH = PACKAGE_DIR / "contracts.py"
 SCHEMA_PATH = PACKAGE_DIR / "schema.sql"
 MANIFEST_PATH = PACKAGE_DIR / "blueprint_manifest.json"
 
-_SUBMODULES = frozenset({"contracts"})
+_SUBMODULES = frozenset({"contracts", "inspector", "gate", "store", "audit"})
+
+_INSPECTOR_EXPORTS = frozenset(
+    {
+        "SweGateInspector",
+        "ReferenceInspector",
+        "parse_diff",
+        "count_decisions",
+        "extract_imports",
+        "inspect_patch",
+    }
+)
+_GATE_EXPORTS = frozenset({"SweGateVerifier", "evaluate_patch"})
+_STORE_EXPORTS = frozenset({"SweGateStore", "persist_evaluation", "persist_with_retry"})
+_AUDIT_EXPORTS = frozenset({"SweGateAuditSink"})
 
 
 def load_schema_sql() -> str:
@@ -119,6 +154,22 @@ def __getattr__(name: str) -> Any:
         mod = importlib.import_module(f"{__name__}.{name}")
         globals()[name] = mod
         return mod
+    if name in _INSPECTOR_EXPORTS:
+        from . import inspector
+
+        return getattr(inspector, name)
+    if name in _GATE_EXPORTS:
+        from . import gate
+
+        return getattr(gate, name)
+    if name in _STORE_EXPORTS:
+        from . import store
+
+        return getattr(store, name)
+    if name in _AUDIT_EXPORTS:
+        from . import audit
+
+        return getattr(audit, name)
     if name in __all__:
         from . import contracts
 
@@ -131,6 +182,7 @@ def __dir__() -> list[str]:
 
 
 if TYPE_CHECKING:
+    from .audit import SweGateAuditSink
     from .contracts import (
         COMMIT_SHA_LEN,
         COMMIT_SHA_PATTERN,
@@ -191,3 +243,13 @@ if TYPE_CHECKING:
         split_violation,
         transition,
     )
+    from .gate import SweGateVerifier, evaluate_patch
+    from .inspector import (
+        ReferenceInspector,
+        SweGateInspector,
+        count_decisions,
+        extract_imports,
+        inspect_patch,
+        parse_diff,
+    )
+    from .store import SweGateStore, persist_evaluation, persist_with_retry

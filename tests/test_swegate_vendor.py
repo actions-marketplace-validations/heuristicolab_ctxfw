@@ -1,10 +1,10 @@
-# manifest_hash: f65c9e8fcc9152df8275d94641f7e9d4c8bd8e88072359102e32b1e849187710
+# manifest_hash: ebc799476bea4d97c21b2118259a632ab897ac4572d75abcaaa91d066de0e83c
 """Gate G9 for ctxfw.swegate: vendored SWE-Gate CI Verifier blueprint files must stay byte-for-byte sealed.
 
 Validates:
 1. Sealed blueprint manifest metadata and Merkle/ACI attestation.
 2. Exact SHA-256 match for contracts.py and schema.sql against blueprint_manifest.json.
-3. Presence of sealed blueprint and M4-P1 manifest_hash headers across files.
+3. Presence of sealed blueprint and M4-P1/M4-P2 manifest_hash headers across files.
 4. Complete absence of carriage return (\\r) bytes across all vendored and package files (zero CRLF).
 5. Clean and lazy import of ctxfw.swegate (zero heavy dependencies loaded at import time).
 6. Pydantic v2 DTO instantiation, immutability (frozen=True, extra="forbid"),
@@ -37,6 +37,7 @@ from ctxfw.swegate import (
 )
 
 M4_P1_MANIFEST_HASH = "f65c9e8fcc9152df8275d94641f7e9d4c8bd8e88072359102e32b1e849187710"
+M4_P2_MANIFEST_HASH = "ebc799476bea4d97c21b2118259a632ab897ac4572d75abcaaa91d066de0e83c"
 BLUEPRINT_MANIFEST_HASH = "8fcfd5d81ee43f9e469b2437c19f95d7657590b7becbc97241a916d86dcb023f"
 EXPECTED_CONTRACTS_SHA256 = "6e39ade14eea86d5882e3bd78049af257a11b981b9d5d5faeb3bf44094e6adb0"
 EXPECTED_SCHEMA_SHA256 = "bee1f2b3cb640939c25e37c0a52cd52ff5576c16cccf64d20a67d810caa908f4"
@@ -78,8 +79,12 @@ def test_vendored_files_carry_the_blueprint_hash_header():
     assert BLUEPRINT_MANIFEST_HASH in load_schema_sql()
     init_text = (PACKAGE_DIR / "__init__.py").read_text(encoding="utf-8")
     test_text = THIS_TEST_FILE.read_text(encoding="utf-8")
-    assert init_text.startswith(f"# manifest_hash: {M4_P1_MANIFEST_HASH}\n")
-    assert test_text.startswith(f"# manifest_hash: {M4_P1_MANIFEST_HASH}\n")
+    valid_headers = (
+        f"# manifest_hash: {M4_P1_MANIFEST_HASH}\n",
+        f"# manifest_hash: {M4_P2_MANIFEST_HASH}\n",
+    )
+    assert init_text.startswith(valid_headers)
+    assert test_text.startswith(valid_headers)
 
 
 def test_vendored_files_have_no_crlf():
