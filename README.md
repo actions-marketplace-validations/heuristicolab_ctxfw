@@ -151,6 +151,7 @@ ctxfw doctor
 [PASS]   Axiomatic Sieve Engine           Evaluation verified (ACI: 1.0000, Invariants: 5).
 [PASS]   SQLite WAL Cache & Concurrency   Journal mode: WAL, Busy timeout: 5000ms.
 [PASS]   Polyglot Tree-Sitter Grammars    Initialized language parsers (typescript, go, java).
+[PASS]   TraceKit Ledger Audit            Chain status: INTACT. Anchor hash: 57372398d453b7e4...
 ------------------------------------------------------------------------
 Overall Verdict:            [HEALTHY] [ATTESTED] Perimeter defense operational.
 ========================================================================
@@ -199,16 +200,19 @@ PROBABILISTIC DOMAIN                      DETERMINISTIC PERIMETER
                                            [ & Git Permitted ]   [ Pre-Commit Abort]
 ```
 
-### Key Subsystems:
-1. **Polyglot Tree-Sitter Pruner**:
-   - Compiles topological dependency trees. Distance 0 (target file) is preserved in full; Distance 1 dependencies retain signatures and docstrings while pruning implementation logic; Distance 2+ dependencies are reduced to compact type stubs.
-   - Built-in support for **Python**, **TypeScript/JavaScript**, **Go**, and **Java**.
-2. **SQLite WAL High-Concurrency Semantic Cache**:
-   - Atomic multi-process caching configured with Write-Ahead Logging (`PRAGMA journal_mode=WAL`) and `busy_timeout=5000ms`, delivering sub-millisecond warm cache hits.
-3. **Axiomatic Sieve Engine**:
-   - Formal specification gatekeeper evaluating requirements against 5 negative invariants (`shall never`), explicit mathematical bounds, deterministic state machines, and a 4-class error taxonomy.
-4. **$D_3$ Ambient Cartography Engine**:
-   - Pre-indexes deep AST boundaries into flat symbol manifests ($P_{95} \le 4.77\text{ ms}$), eliminating hallucinated imports in coupled monoliths and asynchronous distributed orchestrators without leaking stdout.
+### Key Subsystems (v4.0.0 Sovereign Pentad):
+1. **Polyglot Tree-Sitter Pruner & $D_3$ Ambient Cartography**:
+   - Compiles topological dependency trees ($D_0$ full, $D_1$ interface, $D_2$ nominal, $D_3$ flat symbol catalog $\le 1,000$ tokens) across **Python**, **TypeScript/JavaScript**, **Go**, and **Java**.
+2. **TraceKit Cryptographic Ledger (`ctxfw.audit`)**:
+   - Append-only 283-byte canonical SHA-256 hash-chained audit ledger (`tracekit.db`) with tamper latch verification via `ctxfw trace verify`.
+3. **TokenCast Integer Forecaster & Circuit Breaker (`ctxfw.budget`)**:
+   - Zero-float integer trajectory predictor and reactive circuit breaker (`CLOSED` $\to$ `TRIPPED` / `FORCE_D3_PRUNING` $\to$ `HALTED` / `EMERGENCY_HALT`).
+4. **Normative Rules Compiler & Enforcer (`ctxfw.rules`)**:
+   - Compiles `.cursorrules` and `CLAUDE.md` negative directives into deterministic AST/path/command/import guards with 3-round iterative path-traversal normalization.
+5. **SARA Agent Induction Firewall (`ctxfw.sara`)**:
+   - Inspects untrusted tool observations for indirect prompt injection, role overrides (`<system>`, `[INST]`), and Trojan-Source bidi escapes (`ALLOW`, `STRIP_COMMANDS`, `QUARANTINE_TOOL`).
+6. **SWE-Gate CI Verifier (`ctxfw.swegate`)**:
+   - Deterministic unified-diff and architectural regression verifier enforcing cyclomatic complexity delta bounds, disallowed module imports, and `# type: ignore` bans via `evaluate_patch`.
 
 ---
 

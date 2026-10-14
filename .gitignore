@@ -109,9 +109,11 @@ scripts/*sales*.py
 # =====================================================================
 *.cmd
 .gitea/
+.mypy_cache/
+.agents/
+.agent/
 scripts/*monitor*
 scripts/*sprint*
 scripts/*checkpoint*
-.agents/skills/*scout*
-.agents/skills/*triage*
 docs/directives/
+

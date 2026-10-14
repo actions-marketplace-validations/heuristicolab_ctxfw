@@ -69,7 +69,7 @@ Executing `ctxfw init` (or `ctxfw install`) automatically scans, detects, and co
 {
   "mcpServers": {
     "ctxfw": {
-      "command": "C:\\Program Files\\Python310\\python.exe",
+      "command": "python",
       "args": ["-m", "ctxfw.mcp"]
     }
   }
@@ -78,19 +78,20 @@ Executing `ctxfw init` (or `ctxfw install`) automatically scans, detects, and co
 
 ### B. High-Assurance Diagnostics (`ctxfw doctor`)
 
-Verify environmental attestation, stdio stream isolation, and local cache health across 6 diagnostic sentries:
+Verify environmental attestation, stdio stream isolation, and local cache health across 7 diagnostic sentries:
 
 ```bash
 ctxfw doctor
 ```
 
-The 6 automated health checks comprise:
+The 7 automated health checks comprise:
 1. **Python Package & sys.path**: Validates `ctxfw` package integrity, version attestation (`v4.0.0`), and clean module importability.
 2. **MCP stdio Stream Isolation**: Asserts 100% pure JSON-RPC on stdout and verifies diagnostic logs are strictly isolated to stderr to prevent agent JSON-RPC parsing failures.
 3. **Global CLI Executable (PATH)**: Verifies that the `ctxfw` binary is registered and resolvable in the system PATH.
 4. **Axiomatic Sieve Engine**: Executes formal verification of specifications against negative invariants ($N \ge 5$) and domain bounds, confirming ACI $\ge$ 0.9000.
 5. **SQLite WAL Cache & Concurrency**: Confirms Write-Ahead Logging (`PRAGMA journal_mode=WAL`) and 5000ms busy timeout for safe multi-process concurrent access.
 6. **Polyglot Tree-Sitter Grammars**: Verifies initialization of TypeScript, Go, and Java CST parsers alongside the Python standard library `ast`.
+7. **TraceKit Ledger Audit**: Verifies the cryptographic SHA-256 hash chain (`tracekit.db`) and local anchor integrity (`ctxfw trace verify`).
 
 ### C. Exposed MCP Tools
 - `prune_file`:
@@ -102,8 +103,11 @@ The 6 automated health checks comprise:
   - `target_file` (string, required): Active editing buffer (Distance 0).
   - `project_root` (string, optional): Root directory for dependency resolution.
 - `evaluate_spec_axioms`:
-  - `brief` (string, required): Architecture or feature specification in markdown.
+  - `brief_text` (string, required): Architecture or feature specification in markdown.
   - Validates negative invariants, bounds, state machines, and error taxonomies, returning an ACI score and manifest hash.
+- `evaluate_patch`:
+  - `diff_text` (string, required): Unified diff patch to inspect before merge.
+  - Enforces SWE-Gate architectural constraints (cyclomatic complexity delta ceiling, disallowed module imports, `# type: ignore` suppressions, and functional test gates).
 
 ### D. Zero-MCP Reverse Proxy Gateway (Aider, OpenCode, Continue, CLI)
 
@@ -235,7 +239,7 @@ Transform any repository or directory into an active sovereign workspace in $< 1
 ctxfw init
 
 # Or target an arbitrary folder
-ctxfw init C:\sandbox\nuevo-proyecto
+ctxfw init ./my-project
 ```
 
 **Atomically Deployed Sovereign Artifacts:**
@@ -247,10 +251,10 @@ ctxfw init C:\sandbox\nuevo-proyecto
 ### Terminal Telemetry Output
 ```text
 ========================================================================
-  CONTEXT FIREWALL -- SOVEREIGN CLIPBOARD & TOKEN OPTIMIZER (v3.3.0)
+  CONTEXT FIREWALL -- SOVEREIGN CLIPBOARD & TOKEN OPTIMIZER (v4.0.0)
 ========================================================================
 Target Module:  contracts.py
-Project Root:   C:\sandbox\arch-ord-2026-4f003b
+Project Root:   /workspace/service-core
 
 DIST   | MODULE                           | DEPTH      | ORIG TOK  | PRUNED   | SAVINGS 
 ------------------------------------------------------------------------------------
