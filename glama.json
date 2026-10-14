@@ -8,7 +8,8 @@
     "--",
     "uv",
     "run",
-    "ctxfw",
-    "mcp"
+    "python",
+    "-m",
+    "ctxfw.mcp"
   ]
 }
