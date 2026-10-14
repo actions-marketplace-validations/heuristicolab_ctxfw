@@ -1,12 +1,13 @@
+# manifest_hash: 95a55fc5d3734a7591746e268f1a34b487f95a2d2fc15f646305bf738b1bffa3
 """
-ctxfw — Sovereign Context Firewall & Token Optimization Engine (v4.0.0a1)
-Axiom Manifest Hash: 97b5ec2bb5f02761382a2523a5daa304851eb863641d2aa6a1059a2bd1c26414
+ctxfw — Sovereign Context Firewall & Token Optimization Engine (v4.0.0)
+Axiom Manifest Hash: 95a55fc5d3734a7591746e268f1a34b487f95a2d2fc15f646305bf738b1bffa3
 Hermetic Toolchain implementation adhering to Google style and POSIX/XDG standards.
 Includes native integration of the TraceKit audit engine and SQLite WAL ledger.
 """
 from __future__ import annotations
 
-__version__ = "4.0.0a1"
+__version__ = "4.0.0"
 
 from ctxfw.core.contracts import (
     OptimizationRequestDTO,
