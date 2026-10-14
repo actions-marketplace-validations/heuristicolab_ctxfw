@@ -1,6 +1,7 @@
+# manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 """
 src/ctxfw/core/topological.py — Topological Dependency Graph & Context Firewall Engine (v4.0.0-dev)
-manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
+manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 
 Resolves internal project call graphs, assigns semantic distances (D0, D1, D2, D3),
 and dispatches multi-depth AST pruning and D3 ambient cartography with SQLite WAL caching.
@@ -256,6 +257,7 @@ class TopologicalContextBundleDTO(BaseModel):
     root_target: str
     entries: Dict[str, OptimizationResultDTO] = Field(..., description="Optimized modules indexed by relative path")
     ambient_manifest: Optional[str] = Field(default=None, description="D3 Ambient Symbol Cartography manifest if enabled")
+    containment_notice: Optional[str] = Field(default=None, description="Circuit breaker containment or emergency halt notice")
 
     def to_dict(self) -> Dict[str, str]:
         """Maps relative file path to pruned source code string."""
@@ -263,6 +265,11 @@ class TopologicalContextBundleDTO(BaseModel):
 
     def to_prompt(self) -> str:
         """Concatenates modules into a deterministic Markdown prompt format."""
+        if self.containment_notice:
+            return (
+                f"# CONTEXT BUNDLE CONTAINED — Root Target: {self.root_target}\n"
+                f"# Notice: {self.containment_notice}\n"
+            )
         sections: List[str] = [
             f"# CONTEXT BUNDLE — Root Target: {self.root_target}",
             f"# Total Modules: {len(self.entries)}",
@@ -277,6 +284,20 @@ class TopologicalContextBundleDTO(BaseModel):
             sections.append(self.ambient_manifest)
             sections.append("")
         return "\n".join(sections)
+
+
+def _normalize_breaker_state(val: Any) -> Optional[str]:
+    """Normalizes breaker state or decision kind into 'CLOSED', 'TRIPPED', or 'HALTED'."""
+    if val is None:
+        return None
+    s = getattr(val, "value", str(val)).upper().strip()
+    if s in ("CLOSED", "CONTINUE", "DECIDED_CONTINUE", "OK"):
+        return "CLOSED"
+    if s in ("TRIPPED", "PRUNE", "FORCE_D3_PRUNING", "DECIDED_PRUNE", "SOFT_CROSSED"):
+        return "TRIPPED"
+    if s in ("HALTED", "HALT", "EMERGENCY_HALT", "DECIDED_HALT", "HARD_CROSSED", "REJECTED_INVALID"):
+        return "HALTED"
+    return None
 
 
 class ContextFirewallEngine:
@@ -298,6 +319,10 @@ class ContextFirewallEngine:
         target_file: str | Path,
         mode: Optional[str] = None,
         depth_config: Optional[CtxfwConfigDTO] = None,
+        breaker_state: Optional[Any] = None,
+        session_id: Optional[str] = None,
+        tokencast_store: Optional[Any] = None,
+        tracekit_store: Optional[Any] = None,
     ) -> TopologicalContextBundleDTO:
         """
         Builds multi-depth context bundle: D0 (Full), D1 (Interface), D2 (Nominal), D3 (Ambient).
@@ -305,6 +330,8 @@ class ContextFirewallEngine:
         bypassed and raw intact source code is returned for all perimeter dependencies.
         Enforces AXIOM-17 through AXIOM-21 for depth bounds, dynamic namespace quarantine,
         throttled warmup, and subsystem boundary clamping.
+        Enforces reactive TokenCast degradation under budget pressure (TRIPPED -> D3 collapse,
+        HALTED -> containment payload).
         """
         effective_mode = (mode or self.mode or "").lower()
         if not effective_mode:
@@ -323,12 +350,122 @@ class ContextFirewallEngine:
         else:
             target_rel = (self.project_root / target_path).resolve().relative_to(self.project_root).as_posix()
 
+        # Dynamic TokenCast budget resolution if breaker_state not explicitly supplied
+        if breaker_state is None and session_id and tokencast_store is not None:
+            try:
+                budget_data = tokencast_store.get_session_budget(session_id)
+                telemetry_rows = tokencast_store.get_turn_telemetry(session_id)
+                if budget_data and telemetry_rows:
+                    from ctxfw.budget.breaker import CircuitBreaker
+                    from ctxfw.budget.contracts import SessionTokenBudgetDTO, TurnObservationTelemetryDTO
+                    b_dto = SessionTokenBudgetDTO(
+                        session_id=budget_data["session_id"],
+                        soft_limit_tokens=budget_data["soft_limit_tokens"],
+                        hard_limit_tokens=budget_data["hard_limit_tokens"],
+                        max_turns=budget_data["max_turns"],
+                    )
+                    hist = [
+                        TurnObservationTelemetryDTO(
+                            turn_index=r["turn_index"],
+                            prompt_tokens=r["tokens_used"],
+                            completion_tokens=0,
+                            tool_count=0,
+                            elapsed_ms=0,
+                        )
+                        for r in telemetry_rows
+                    ]
+                    dec, _, _ = CircuitBreaker.decide(b_dto, hist)
+                    breaker_state = dec.decision
+                else:
+                    events = tokencast_store.get_enforcement_events(session_id)
+                    if events:
+                        breaker_state = events[-1].get("decision")
+            except Exception:
+                pass
+
+        norm_breaker = _normalize_breaker_state(breaker_state)
+
+        # HALTED containment check (immediate halt without AST calls or dependency traversal)
+        if norm_breaker == "HALTED":
+            if tokencast_store is not None and session_id:
+                try:
+                    if tokencast_store.get_session_budget(session_id) is None:
+                        from ctxfw.budget.contracts import SessionTokenBudgetDTO
+
+                        tokencast_store.create_session_budget(
+                            SessionTokenBudgetDTO(
+                                session_id=session_id,
+                                soft_limit_tokens=100000,
+                                hard_limit_tokens=200000,
+                                max_turns=100,
+                            )
+                        )
+                    latest = tokencast_store.get_enforcement_events(session_id)
+                    if not latest or latest[-1].get("decision") != "EMERGENCY_HALT":
+                        tokencast_store.record_enforcement_decision(session_id, "EMERGENCY_HALT", 0)
+                except Exception:
+                    pass
+            if tracekit_store is not None and session_id:
+                try:
+                    tracekit_store.record_step(
+                        session_id=session_id,
+                        user_prompt=f"Topological build for {target_file}",
+                        plan_summary="Circuit breaker containment active",
+                        tool_or_file="budget.breaker",
+                        payload="HALTED: emergency containment active",
+                    )
+                except Exception:
+                    pass
+            return TopologicalContextBundleDTO(
+                root_target=target_rel,
+                entries={},
+                ambient_manifest=None,
+                containment_notice="HALTED: Hard session budget limit reached or emergency halt triggered. Context resolution aborted for containment.",
+            )
+
+        is_tripped = (norm_breaker == "TRIPPED")
+        if is_tripped:
+            if tokencast_store is not None and session_id:
+                try:
+                    if tokencast_store.get_session_budget(session_id) is None:
+                        from ctxfw.budget.contracts import SessionTokenBudgetDTO
+
+                        tokencast_store.create_session_budget(
+                            SessionTokenBudgetDTO(
+                                session_id=session_id,
+                                soft_limit_tokens=100000,
+                                hard_limit_tokens=200000,
+                                max_turns=100,
+                            )
+                        )
+                    latest = tokencast_store.get_enforcement_events(session_id)
+                    if not latest or latest[-1].get("decision") != "FORCE_D3_PRUNING":
+                        tokencast_store.record_enforcement_decision(session_id, "FORCE_D3_PRUNING", 0)
+                except Exception:
+                    pass
+            if tracekit_store is not None and session_id:
+                try:
+                    tracekit_store.record_step(
+                        session_id=session_id,
+                        user_prompt=f"Topological build for {target_file}",
+                        plan_summary="Circuit breaker reactive degradation under budget pressure",
+                        tool_or_file="budget.breaker",
+                        payload="TRIPPED: FORCE_D3_PRUNING reactive degradation active",
+                    )
+                except Exception:
+                    pass
+
         entries: Dict[str, OptimizationResultDTO] = {}
         sorted_modules = sorted(distances.items(), key=lambda item: (item[1], item[0]))
 
         d3_candidate_modules: List[str] = []
 
         for rel_path, distance in sorted_modules:
+            # Under TRIPPED (FORCE_D3_PRUNING), collapse distance >= 2 straight into D3 symbol ambient candidates
+            if is_tripped and distance >= 2:
+                d3_candidate_modules.append(rel_path)
+                continue
+
             # Early distance filtering before filesystem stat operations
             if depth_cfg.max_depth == ContextDepthLevel.PURE_PASSTHROUGH and distance > 0:
                 continue
@@ -366,17 +503,27 @@ class ContextFirewallEngine:
                 )
                 continue
 
-            if distance == 0:
-                depth = PruningDepth.FULL
-            elif distance == 1:
-                depth = PruningDepth.INTERFACE
+            if is_tripped:
+                # Under TRIPPED: perimeter collapses to minimal D3 nominal interfaces with stripped docs
+                if distance == 0:
+                    depth = PruningDepth.FULL
+                    strip_docs = False
+                else:
+                    depth = PruningDepth.NOMINAL
+                    strip_docs = True
             else:
-                depth = PruningDepth.NOMINAL
+                strip_docs = False
+                if distance == 0:
+                    depth = PruningDepth.FULL
+                elif distance == 1:
+                    depth = PruningDepth.INTERFACE
+                else:
+                    depth = PruningDepth.NOMINAL
 
             cache_key = LocalSemanticCache.generate_key(
                 source_code=code,
                 rules_version=DeterministicContextPruner.RULES_VERSION,
-                strip_docs=False,
+                strip_docs=strip_docs,
                 depth=depth.value,
             )
 
@@ -404,7 +551,7 @@ class ContextFirewallEngine:
                     req = OptimizationRequestDTO(
                         source_code=code,
                         language="python",
-                        strip_docs=False,
+                        strip_docs=strip_docs,
                         depth=depth,
                         sanitize_raises=True,
                     )
@@ -436,7 +583,7 @@ class ContextFirewallEngine:
                 entries[rel_path] = dto
 
         ambient_manifest_str: Optional[str] = None
-        if d3_candidate_modules and (depth_cfg.ambient_manifest or depth_cfg.max_depth == ContextDepthLevel.AMBIENT_CARTOGRAPHY):
+        if d3_candidate_modules and (is_tripped or depth_cfg.ambient_manifest or depth_cfg.max_depth == ContextDepthLevel.AMBIENT_CARTOGRAPHY):
             allowed_subsystems: Set[str] = set()
             if depth_cfg.subsystem_clamping:
                 for ep in entries.keys():
@@ -524,6 +671,70 @@ class ContextFirewallEngine:
             root_target=target_rel,
             entries=entries,
             ambient_manifest=ambient_manifest_str,
+        )
+
+    def build_context_with_budget(
+        self,
+        target_file: str | Path,
+        budget: Any,
+        history: Sequence[Any],
+        horizon_turns: int = 4,
+        usd_per_1k: Any = None,
+        mode: Optional[str] = None,
+        depth_config: Optional[CtxfwConfigDTO] = None,
+        tokencast_store: Optional[Any] = None,
+        tracekit_store: Optional[Any] = None,
+    ) -> TopologicalContextBundleDTO:
+        """
+        Evaluates session token budget against turn history using CircuitBreaker.decide
+        and applies reactive degradation (TRIPPED -> FORCE_D3_PRUNING, HALTED -> containment).
+        """
+        from decimal import Decimal
+        from ctxfw.budget.breaker import CircuitBreaker
+        from ctxfw.budget.contracts import SessionTokenBudgetDTO
+
+        if usd_per_1k is None:
+            usd_per_1k = Decimal("0.0000")
+        elif not isinstance(usd_per_1k, Decimal):
+            usd_per_1k = Decimal(str(usd_per_1k))
+
+        if isinstance(budget, dict):
+            budget = SessionTokenBudgetDTO(**budget)
+
+        decision, forecast, _ = CircuitBreaker.decide(
+            budget, history, horizon_turns=horizon_turns, usd_per_1k=usd_per_1k
+        )
+
+        if tokencast_store is not None:
+            try:
+                tokencast_store.record_enforcement_decision(
+                    session_id=budget.session_id,
+                    decision=decision.decision,
+                    forecast_tokens=forecast.predicted_cumulative_tokens,
+                )
+            except Exception:
+                pass
+
+        if tracekit_store is not None:
+            try:
+                tracekit_store.record_step(
+                    session_id=budget.session_id,
+                    user_prompt=f"Budget evaluation for target: {target_file}",
+                    plan_summary=f"Circuit breaker evaluated to {decision.decision.value}",
+                    tool_or_file="budget.breaker",
+                    payload=f"BUDGET_DECISION: {decision.decision.value} (predicted={forecast.predicted_cumulative_tokens}, soft={budget.soft_limit_tokens}, hard={budget.hard_limit_tokens})",
+                )
+            except Exception:
+                pass
+
+        return self.build_context(
+            target_file=target_file,
+            mode=mode,
+            depth_config=depth_config,
+            breaker_state=decision.decision,
+            session_id=budget.session_id,
+            tokencast_store=tokencast_store,
+            tracekit_store=tracekit_store,
         )
 
 

@@ -1,33 +1,12 @@
+# manifest_hash: 990875d35d51a816507954d5e1a61506dcd2b5ec7d40d515a65c4ee5ac325f5f
 """
-src/ctxfw/cli/__init__.py — Unified Command Line Interface Package (v3.9.0)
-Axiom Manifest Hash: 9845b97331f39b4cb728b0702dd5b56693b5588c1d129a35a9843d5b8ad8d3ca
+src/ctxfw/cli/__init__.py — Unified Command Line Interface Package (v4.0.0)
+Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
 """
-from ctxfw.cli.main import (
-    app,
-    build_parser,
-    copy_to_clipboard,
-    doctor_entrypoint,
-    handle_init_cli,
-    handle_init_command,
-    handle_install_cli,
-    install_entrypoint,
-    handle_spec_command,
-    init_entrypoint,
-    inject_agent_mcp_config,
-    install_claude_surfaces,
-    safe_merge_claude_code_config,
-    main,
-    resolve_claude_desktop_config_path,
-    resolve_cursor_config_path,
-    run_doctor_cli,
-    run_firewall_cli,
-    run_init_mcp_agents,
-    run_spec_verify,
-    handle_config_command,
-    handle_mode_command,
-    handle_report_command,
-    generate_share_report,
-)
+from __future__ import annotations
+
+import importlib
+from typing import Any
 
 __all__ = [
     "app",
@@ -53,5 +32,21 @@ __all__ = [
     "handle_mode_command",
     "handle_report_command",
     "generate_share_report",
+    "handle_trace_command",
+    "run_trace_verify",
     "main",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in __all__:
+        mod = importlib.import_module("ctxfw.cli.main")
+        val = getattr(mod, name)
+        globals()[name] = val
+        return val
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
+

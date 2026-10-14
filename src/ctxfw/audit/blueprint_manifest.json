@@ -1,0 +1,39 @@
+{
+  "blueprint_id": "BP-SIG-728856af9bd65ae0-TRACEKIT-HASH-LEDGER",
+  "signal_id": "SIG-728856af9bd65ae0",
+  "proposal_id": "PROP-728856af9bd65ae0-H1",
+  "horizon": "HORIZON_1",
+  "architecture_standard": "HEURISTICO_LAB_SOVEREIGN_BLUEPRINT_V2",
+  "ctxfw": {
+    "status": "VERIFIED",
+    "aci_score": 1.0,
+    "manifest_hash": "7fe956c6456ad27a1f570080151730b426b09b4026b33c5269830925296a824c"
+  },
+  "deliverables": {
+    "specs/1_mermaid_dag.md": {
+      "sha256": "d18258575f70fe411ad0373c134869db89522c2bb600e3b34b4d54995aa0ea9b"
+    },
+    "specs/2_pydantic_contracts.py": {
+      "sha256": "997e50655eadccce27f72a05c339a3625baed3507e9452d06f7045a725a10ee8"
+    },
+    "specs/3_schema_ddl.sql": {
+      "sha256": "20574a322190558dfcdf769ab1490245b4c84f0236588aea55e0a82694564ce3"
+    },
+    "specs/4_pytest_tdd_matrix.py": {
+      "sha256": "8aa00dc0a0876f38d98087a9ada77498e70fc47319ee5fcfee3b92829c9fba75"
+    },
+    "specs/5_fabrication_directive.md": {
+      "sha256": "5ff3c6e0a6d2354e2ef15b062298690077f7165c83e96e2d1f44c3500374735e"
+    }
+  },
+  "merkle_root_sha256": "5192212d83981b0a47ff8edbb17ba3760a5a940f19aa8a833804d51e6f55ca23",
+  "hermetic_compiler": {
+    "ast_valid": true,
+    "ddl_valid": true,
+    "semantic_gate_enforced": true,
+    "passed_tests": 49,
+    "warnings": 0,
+    "execution_time_ms": 107.28
+  },
+  "generated_at": "2026-10-06T23:29:58Z"
+}

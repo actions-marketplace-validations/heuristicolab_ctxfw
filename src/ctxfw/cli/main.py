@@ -1,8 +1,8 @@
 """
 src/ctxfw/cli/main.py — Unified Command Line Interface for Context Firewall (v3.9.0)
-Axiom Manifest Hash: 9845b97331f39b4cb728b0702dd5b56693b5588c1d129a35a9843d5b8ad8d3ca
+Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
 Supports direct target file clipboard invocation (`ctxfw <file>`) 
-plus explicit subcommands (`ctxfw benchmark`, `ctxfw mcp`, `ctxfw proxy`, `ctxfw ci`, `ctxfw audit`, `ctxfw init`, `ctxfw install`, `ctxfw doctor`, `ctxfw spec`, `ctxfw report`).
+plus explicit subcommands (`ctxfw benchmark`, `ctxfw mcp`, `ctxfw proxy`, `ctxfw ci`, `ctxfw audit`, `ctxfw trace`, `ctxfw init`, `ctxfw install`, `ctxfw doctor`, `ctxfw spec`, `ctxfw report`).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Optional
+from typing import List, Optional
 
 from ctxfw.core.contracts import PruningDepth
 from ctxfw.core.pruner import DeterministicContextPruner
@@ -512,6 +512,254 @@ def handle_spec_command(argv: list[str]) -> int:
         return run_spec_verify(args.file_path)
     else:
         parser.print_help()
+        return 0
+
+
+def run_trace_verify(
+    db_path_str: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> int:
+    """
+    Verifies backward integrity of the TraceKit hash-chained audit ledger.
+    Enforces:
+      - Invocación de ctxfw.audit.verifier.verify_chain sobre tracekit.db.
+      - Formats console output showing: chain status, total blocks audited, latest block digest, tamper_detected (True/False).
+    """
+    from ctxfw.audit.store import TRACEKIT_DB_NAME, resolve_tracekit_db_path
+
+    if db_path_str:
+        db_path = Path(db_path_str).resolve()
+        if db_path.name != TRACEKIT_DB_NAME:
+            sys.stderr.write(f"[ERROR] TraceKit database file must be named '{TRACEKIT_DB_NAME}', got '{db_path.name}'.\n")
+            return 1
+    else:
+        db_path = resolve_tracekit_db_path()
+
+    from ctxfw.installer import (
+        CLR_CRIMSON,
+        CLR_CYAN,
+        CLR_EMERALD,
+        CLR_GRAPHITE,
+        CLR_RESET,
+        CLR_WHITE_BOLD,
+    )
+
+    if not db_path.is_file():
+        sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+        sys.stdout.write(f"  {CLR_CYAN}CTXFW TRACEKIT LEDGER // HASH-CHAIN INTEGRITY VERIFIER{CLR_RESET}\n")
+        sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+        sys.stdout.write(f"Database File:         {db_path}\n")
+        sys.stdout.write(f"Chain Status:          {CLR_EMERALD}VERIFIED_CLEAN (EMPTY){CLR_RESET}\n")
+        sys.stdout.write(f"Total Blocks Audited:  {CLR_WHITE_BOLD}0{CLR_RESET}\n")
+        sys.stdout.write(f"Latest Block Digest:   {CLR_WHITE_BOLD}None{CLR_RESET}\n")
+        sys.stdout.write(f"Tamper Detected:       {CLR_EMERALD}False{CLR_RESET}\n")
+        sys.stdout.write("tamper_detected:       False\n")
+        sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+        return 0
+
+    import sqlite3
+    from datetime import datetime, timezone
+    from ctxfw.audit.contracts import HashChainedAuditBlockDTO
+    from ctxfw.audit.verifier import apply_latch, fail_closed_audit, verify_chain
+    from ctxfw.kernel.clock import SystemUtcClock
+
+    clock = SystemUtcClock()
+    now_ts = clock.now()
+
+    conn = None
+    try:
+        try:
+            uri = f"{db_path.as_uri()}?mode=ro"
+            conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+        except Exception:
+            conn = sqlite3.connect(str(db_path), timeout=5.0)
+
+        cursor = conn.cursor()
+        tables = {r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not tables:
+            conn.close()
+            conn = None
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            sys.stdout.write(f"  {CLR_CYAN}CTXFW TRACEKIT LEDGER // HASH-CHAIN INTEGRITY VERIFIER{CLR_RESET}\n")
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            sys.stdout.write(f"Database File:         {db_path}\n")
+            sys.stdout.write(f"Chain Status:          {CLR_EMERALD}VERIFIED_CLEAN (EMPTY){CLR_RESET}\n")
+            sys.stdout.write(f"Total Blocks Audited:  {CLR_WHITE_BOLD}0{CLR_RESET}\n")
+            sys.stdout.write(f"Latest Block Digest:   {CLR_WHITE_BOLD}None{CLR_RESET}\n")
+            sys.stdout.write(f"Tamper Detected:       {CLR_EMERALD}False{CLR_RESET}\n")
+            sys.stdout.write("tamper_detected:       False\n")
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            return 0
+
+        if "tracekit_sessions" not in tables or "tracekit_audit_blocks" not in tables:
+            conn.close()
+            conn = None
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            sys.stdout.write(f"  {CLR_CYAN}CTXFW TRACEKIT LEDGER // HASH-CHAIN INTEGRITY VERIFIER{CLR_RESET}\n")
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            sys.stdout.write(f"Database File:         {db_path}\n")
+            sys.stdout.write(f"Chain Status:          {CLR_CRIMSON}TAMPER_DETECTED (SCHEMA CORRUPTED){CLR_RESET}\n")
+            sys.stdout.write(f"Total Blocks Audited:  {CLR_WHITE_BOLD}1{CLR_RESET}\n")
+            sys.stdout.write(f"Latest Block Digest:   {CLR_WHITE_BOLD}None{CLR_RESET}\n")
+            sys.stdout.write(f"Tamper Detected:       {CLR_CRIMSON}True{CLR_RESET}\n")
+            sys.stdout.write("tamper_detected:       True\n")
+            sys.stdout.write(f"{CLR_CRIMSON}[!] Tamper Details:     Missing sealed tables (tracekit_sessions / tracekit_audit_blocks){CLR_RESET}\n")
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            return 1
+
+        if session_id:
+            sessions = cursor.execute(
+                "SELECT session_id, genesis_hash FROM tracekit_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchall()
+            if not sessions:
+                conn.close()
+                conn = None
+                verdict = fail_closed_audit(session_id, now_ts)
+                sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+                sys.stdout.write(f"  {CLR_CYAN}CTXFW TRACEKIT LEDGER // HASH-CHAIN INTEGRITY VERIFIER{CLR_RESET}\n")
+                sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+                sys.stdout.write(f"Database File:         {db_path}\n")
+                sys.stdout.write(f"Chain Status:          {CLR_CRIMSON}TAMPER_DETECTED (SESSION NOT FOUND){CLR_RESET}\n")
+                sys.stdout.write(f"Total Blocks Audited:  {CLR_WHITE_BOLD}{verdict.total_blocks_audited}{CLR_RESET}\n")
+                sys.stdout.write(f"Latest Block Digest:   {CLR_WHITE_BOLD}None{CLR_RESET}\n")
+                sys.stdout.write(f"Tamper Detected:       {CLR_CRIMSON}True{CLR_RESET}\n")
+                sys.stdout.write("tamper_detected:       True\n")
+                sys.stdout.write(f"{CLR_CRIMSON}[!] Tamper Details:     Session {session_id} not found in ledger (fail-closed){CLR_RESET}\n")
+                sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+                return 1
+        else:
+            sessions = cursor.execute(
+                "SELECT session_id, genesis_hash FROM tracekit_sessions ORDER BY created_at ASC"
+            ).fetchall()
+
+        if not sessions:
+            conn.close()
+            conn = None
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            sys.stdout.write(f"  {CLR_CYAN}CTXFW TRACEKIT LEDGER // HASH-CHAIN INTEGRITY VERIFIER{CLR_RESET}\n")
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            sys.stdout.write(f"Database File:         {db_path}\n")
+            sys.stdout.write(f"Chain Status:          {CLR_EMERALD}VERIFIED_CLEAN (0 SESSIONS){CLR_RESET}\n")
+            sys.stdout.write(f"Total Blocks Audited:  {CLR_WHITE_BOLD}0{CLR_RESET}\n")
+            sys.stdout.write(f"Latest Block Digest:   {CLR_WHITE_BOLD}None{CLR_RESET}\n")
+            sys.stdout.write(f"Tamper Detected:       {CLR_EMERALD}False{CLR_RESET}\n")
+            sys.stdout.write("tamper_detected:       False\n")
+            sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+            return 0
+
+        total_audited = 0
+        tamper_detected = False
+        broken_info = None
+        latest_digest = None
+
+        for sid, ghash in sessions:
+            b_rows = cursor.execute(
+                "SELECT block_id, session_id, block_seq, prev_block_hash, current_block_hash, "
+                "intent_digest, reasoning_digest, action_digest, created_at "
+                "FROM tracekit_audit_blocks WHERE session_id = ? ORDER BY block_seq ASC",
+                (sid,),
+            ).fetchall()
+
+            blocks = []
+            try:
+                for r in b_rows:
+                    ts = datetime.strptime(r[8], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+                    blocks.append(
+                        HashChainedAuditBlockDTO(
+                            block_id=r[0],
+                            session_id=r[1],
+                            block_seq=r[2],
+                            prev_block_hash=r[3],
+                            current_block_hash=r[4],
+                            intent_digest=r[5],
+                            reasoning_digest=r[6],
+                            action_digest=r[7],
+                            timestamp_utc=ts,
+                        )
+                    )
+                    latest_digest = r[4]
+            except Exception as parse_err:
+                verdict = fail_closed_audit(sid, now_ts)
+                tamper_detected = True
+                total_audited += verdict.total_blocks_audited
+                broken_info = f"Session {sid} block data corrupted/tampered: {parse_err}"
+                break
+
+            latch_row = cursor.execute(
+                "SELECT broken_seq FROM tracekit_verification_events WHERE session_id = ? AND is_tampered = 1 ORDER BY rowid LIMIT 1",
+                (sid,),
+            ).fetchone()
+            latched_seq = latch_row[0] if latch_row else None
+
+            verdict = verify_chain(
+                session_id=sid,
+                genesis_hash=ghash,
+                blocks=blocks,
+                verified_at=now_ts,
+            )
+            verdict = apply_latch(verdict, latched_seq)
+            total_audited += verdict.total_blocks_audited
+
+            if verdict.is_tampered:
+                tamper_detected = True
+                broken_info = f"Session {sid} broken at block {verdict.broken_block_seq}"
+                break
+
+        conn.close()
+        conn = None
+    except Exception as err:
+        sys.stderr.write(f"[ERROR] Failed to verify TraceKit database: {err}\n")
+        return 1
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    chain_status = "TAMPER_DETECTED" if tamper_detected else "VERIFIED_CLEAN"
+    status_color = CLR_CRIMSON if tamper_detected else CLR_EMERALD
+
+    sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+    sys.stdout.write(f"  {CLR_CYAN}CTXFW TRACEKIT LEDGER // HASH-CHAIN INTEGRITY VERIFIER{CLR_RESET}\n")
+    sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+    sys.stdout.write(f"Database File:         {db_path}\n")
+    sys.stdout.write(f"Chain Status:          {status_color}{chain_status}{CLR_RESET}\n")
+    sys.stdout.write(f"Total Blocks Audited:  {CLR_WHITE_BOLD}{total_audited}{CLR_RESET}\n")
+    sys.stdout.write(f"Latest Block Digest:   {CLR_WHITE_BOLD}{latest_digest or 'None'}{CLR_RESET}\n")
+    sys.stdout.write(f"Tamper Detected:       {status_color}{tamper_detected}{CLR_RESET}\n")
+    sys.stdout.write(f"tamper_detected:       {tamper_detected}\n")
+    if tamper_detected and broken_info:
+        sys.stdout.write(f"{CLR_CRIMSON}[!] Tamper Details:     {broken_info}{CLR_RESET}\n")
+    sys.stdout.write(f"{CLR_GRAPHITE}========================================================================{CLR_RESET}\n")
+
+    return 1 if tamper_detected else 0
+
+
+def handle_trace_command(argv: list[str]) -> int:
+    """Handles ctxfw trace subcommand routing."""
+    parser = argparse.ArgumentParser(
+        prog="ctxfw trace",
+        description="TraceKit hash-chained audit ledger inspection and backward verification.",
+    )
+    subparsers = parser.add_subparsers(dest="trace_subcommand", help="Trace subcommands")
+    verify_parser = subparsers.add_parser("verify", help="Verify hash chain backward consistency")
+    verify_parser.add_argument("--db", type=str, default=None, help="Path to tracekit.db SQLite database")
+    verify_parser.add_argument("--session", "-s", type=str, default=None, help="Optional session ID to verify")
+
+    if not argv or (len(argv) == 1 and argv[0] in {"-h", "--help"}):
+        parser.print_help()
+        return 0
+
+    args = parser.parse_args(argv)
+    if args.trace_subcommand == "verify":
+        return run_trace_verify(db_path_str=args.db, session_id=args.session)
+    else:
+        parser.print_help()
+        return 0
+
+
 def handle_config_command(argv: list[str]) -> int:
     """Handles ctxfw config [list|show|get|set] commands."""
     from ctxfw.config import load_config, set_config_value
@@ -740,6 +988,7 @@ def build_parser() -> argparse.ArgumentParser:
                     "  service              Manage background service (Windows sc.exe & systemd)\n"
                     "  ci                   Run CI/CD PR topological gatekeeper\n"
                     "  audit                Audit FinOps token savings and telemetry ledger\n"
+                    "  trace                Inspect and verify TraceKit hash-chained audit ledger\n"
                     "  spec                 Verify specification axioms and negative invariants\n"
                     "  benchmark            Profile topological AST token reduction and FinOps savings",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -802,6 +1051,21 @@ def build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--output", "-o", type=str, default=None, help="Save report to specified output path")
     report_parser.add_argument("--db", type=str, default=None, help="Path to SQLite telemetry database")
 
+    # Subcommand trace
+    trace_parser = subparsers.add_parser("trace", help="Inspect and verify TraceKit hash-chained audit ledger")
+    trace_sub = trace_parser.add_subparsers(dest="trace_subcommand")
+    trace_verify_parser = trace_sub.add_parser("verify", help="Verify hash chain backward consistency")
+    trace_verify_parser.add_argument("--db", type=str, default=None, help="Path to tracekit.db SQLite database")
+    trace_verify_parser.add_argument("--session", "-s", type=str, default=None, help="Optional session ID to verify")
+
+    def _run_trace_dispatch(parsed_args: argparse.Namespace) -> int:
+        if getattr(parsed_args, "trace_subcommand", None) == "verify":
+            return run_trace_verify(db_path_str=getattr(parsed_args, "db", None), session_id=getattr(parsed_args, "session", None))
+        trace_parser.print_help()
+        return 0
+
+    trace_parser.set_defaults(func=_run_trace_dispatch)
+
     # Subcomando benchmark
     benchmark.register_parser(subparsers)
 
@@ -821,7 +1085,7 @@ def main():
         parser.parse_args(sys.argv[1:])
         return
 
-    if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "proxy", "ci", "audit", "init", "install", "service", "spec", "doctor", "benchmark", "config", "mode", "report"}:
+    if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "proxy", "ci", "audit", "trace", "init", "install", "service", "spec", "doctor", "benchmark", "config", "mode", "report"}:
         subcmd = sys.argv[1]
         if subcmd == "benchmark":
             parser = build_parser()
@@ -837,6 +1101,8 @@ def main():
             sys.exit(handle_mode_command(sys.argv[1:]))
         elif subcmd == "report":
             sys.exit(handle_report_command(sys.argv[1:]))
+        elif subcmd == "trace":
+            sys.exit(handle_trace_command(sys.argv[1:]))
         elif subcmd == "install":
             code = handle_install_cli(sys.argv[1:])
             if code != 0:
@@ -890,6 +1156,7 @@ def main():
                     "  service              Manage background service (Windows sc.exe & systemd)\n"
                     "  ci                   Run CI/CD PR topological gatekeeper\n"
                     "  audit                Audit FinOps token savings and telemetry ledger\n"
+                    "  trace                Inspect and verify TraceKit hash-chained audit ledger\n"
                     "  spec                 Verify specification axioms and negative invariants\n"
                     "  benchmark            Profile topological AST token reduction and FinOps savings",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -946,6 +1213,8 @@ __all__ = [
     "handle_mode_command",
     "handle_report_command",
     "generate_share_report",
+    "handle_trace_command",
+    "run_trace_verify",
     "main",
 ]
 

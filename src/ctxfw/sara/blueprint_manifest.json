@@ -1,0 +1,39 @@
+{
+  "blueprint_id": "BP-SIG-0d2acf53b92882b0-SARA",
+  "signal_id": "SIG-0d2acf53b92882b0",
+  "proposal_id": "PROP-0d2acf53b92882b0-H2",
+  "horizon": "HORIZON_2",
+  "architecture_standard": "HEURISTICO_LAB_SOVEREIGN_BLUEPRINT_V2",
+  "ctxfw": {
+    "status": "VERIFIED",
+    "aci_score": 1.0,
+    "manifest_hash": "51d819312f8dd802981a7b7d97b9d6397316738ded76c94161a9f147411c94ea"
+  },
+  "deliverables": {
+    "specs/1_mermaid_dag.md": {
+      "sha256": "f200dbaa8e891a6ddb43a40b1053523d571505f47e2c4a8aaea6b33f55460119"
+    },
+    "specs/2_pydantic_contracts.py": {
+      "sha256": "8849908c9668138707bff87543e55708a0c5bbd00fcd58ac82cd515a32d83fb8"
+    },
+    "specs/3_schema_ddl.sql": {
+      "sha256": "c0bba491b5e321f6025375ed579a31e4c8cc1644fd8b2910365a0670e251ca98"
+    },
+    "specs/4_pytest_tdd_matrix.py": {
+      "sha256": "990a44aa32da28d38a3297960ab3de683b4294e424da376a761d7fc7f4e0406a"
+    },
+    "specs/5_fabrication_directive.md": {
+      "sha256": "faba7a6882dd7e5d235c22dbcbd31349bb5c76d358fe350a7ddc837b6950695e"
+    }
+  },
+  "merkle_root_sha256": "302bcd173a0d6ebdd506c4a2741b4301e75a2c4a4c9405b658b2c2cc208cbadb",
+  "hermetic_compiler": {
+    "ast_valid": true,
+    "ddl_valid": true,
+    "semantic_gate_enforced": true,
+    "passed_tests": 20,
+    "warnings": 0,
+    "execution_time_ms": 77.602
+  },
+  "generated_at": "2026-10-06T21:08:06Z"
+}

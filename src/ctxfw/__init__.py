@@ -1,11 +1,13 @@
+# manifest_hash: 95a55fc5d3734a7591746e268f1a34b487f95a2d2fc15f646305bf738b1bffa3
 """
-ctxfw — Sovereign Context Firewall & Token Optimization Engine (v3.9.1)
-Axiom Manifest Hash: 97b5ec2bb5f02761382a2523a5daa304851eb863641d2aa6a1059a2bd1c26414
+ctxfw — Sovereign Context Firewall & Token Optimization Engine (v4.0.0)
+Axiom Manifest Hash: 95a55fc5d3734a7591746e268f1a34b487f95a2d2fc15f646305bf738b1bffa3
 Hermetic Toolchain implementation adhering to Google style and POSIX/XDG standards.
+Includes native integration of the TraceKit audit engine and SQLite WAL ledger.
 """
 from __future__ import annotations
 
-__version__ = "3.9.1"
+__version__ = "4.0.0"
 
 from ctxfw.core.contracts import (
     OptimizationRequestDTO,
@@ -27,7 +29,6 @@ from ctxfw.core.topological import (
     StaticImportExtractor,
     TopologicalContextBundleDTO,
 )
-from ctxfw.cli import handle_init_command
 from ctxfw.storage.cache import LocalSemanticCache, get_canonical_cache_path
 
 __all__ = [
@@ -51,3 +52,13 @@ __all__ = [
     "get_canonical_cache_path",
     "handle_init_command",
 ]
+
+
+def __getattr__(name: str):
+    if name == "handle_init_command":
+        from ctxfw.cli.main import handle_init_command
+
+        globals()["handle_init_command"] = handle_init_command
+        return handle_init_command
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
