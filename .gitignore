@@ -1,3 +1,4 @@
+# manifest_hash: 990875d35d51a816507954d5e1a61506dcd2b5ec7d40d515a65c4ee5ac325f5f
 # =====================================================================
 # CTXFW CANONICAL EXCLUSION MANIFEST (ZERO-POLLUTION SHIELD)
 # =====================================================================
@@ -25,12 +26,22 @@ htmlcov/
 *.db
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 tokens.db
 tokens.db-wal
 tokens.db-shm
 telemetry.db
-*.sqlite
-*.sqlite3
+tracekit.db*
+tokencast.db*
+rules.db*
+sara.db*
+swegate.db*
+.tracekit.anchor
 
 # 4. Artefactos de Empaquetado y Distribución
 build/

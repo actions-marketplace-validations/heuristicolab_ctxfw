@@ -29,7 +29,6 @@ from ctxfw.core.topological import (
     StaticImportExtractor,
     TopologicalContextBundleDTO,
 )
-from ctxfw.cli import handle_init_command
 from ctxfw.storage.cache import LocalSemanticCache, get_canonical_cache_path
 
 __all__ = [
@@ -53,3 +52,13 @@ __all__ = [
     "get_canonical_cache_path",
     "handle_init_command",
 ]
+
+
+def __getattr__(name: str):
+    if name == "handle_init_command":
+        from ctxfw.cli.main import handle_init_command
+
+        globals()["handle_init_command"] = handle_init_command
+        return handle_init_command
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
