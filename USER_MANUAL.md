@@ -108,6 +108,9 @@ The 7 automated health checks comprise:
 - `evaluate_patch`:
   - `diff_text` (string, required): Unified diff patch to inspect before merge.
   - Enforces SWE-Gate architectural constraints (cyclomatic complexity delta ceiling, disallowed module imports, `# type: ignore` suppressions, and functional test gates).
+- `query_audit_ledger`:
+  - `evaluation_id` (string, optional): SWE-Gate evaluation identifier (`EVL-...`) returned by `evaluate_patch`.
+  - `session_id` (string, optional): TraceKit session identifier (`SES-...`) to verify SHA-256 hash chain integrity and inspect sealed audit blocks (`include_blocks`, `max_blocks`).
 
 ### D. Zero-MCP Reverse Proxy Gateway (Aider, OpenCode, Continue, CLI)
 

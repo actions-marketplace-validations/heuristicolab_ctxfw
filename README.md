@@ -6,7 +6,7 @@
 [![PyPI - Version](https://img.shields.io/badge/PyPI-v4.0.0-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
 [![PyPI - Downloads](https://img.shields.io/pepy/dt/ctxfw?style=for-the-badge&logo=pypi&logoColor=white&color=007ec6)](https://pepy.tech/project/ctxfw)
 [![Axiomatic Completeness Index](https://img.shields.io/badge/ACI-1.0000_VERIFIED-000000?style=for-the-badge&logo=shield)](https://ctxfw.heuristicolab.com)
-[![Tests](https://img.shields.io/badge/TESTS-461%2F461_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
+[![Tests](https://img.shields.io/badge/TESTS-463%2F463_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
 
@@ -211,8 +211,8 @@ PROBABILISTIC DOMAIN                      DETERMINISTIC PERIMETER
    - Compiles `.cursorrules` and `CLAUDE.md` negative directives into deterministic AST/path/command/import guards with 3-round iterative path-traversal normalization.
 5. **SARA Agent Induction Firewall (`ctxfw.sara`)**:
    - Inspects untrusted tool observations for indirect prompt injection, role overrides (`<system>`, `[INST]`), and Trojan-Source bidi escapes (`ALLOW`, `STRIP_COMMANDS`, `QUARANTINE_TOOL`).
-6. **SWE-Gate CI Verifier (`ctxfw.swegate`)**:
-   - Deterministic unified-diff and architectural regression verifier enforcing cyclomatic complexity delta bounds, disallowed module imports, and `# type: ignore` bans via `evaluate_patch`.
+6. **SWE-Gate CI Verifier (`ctxfw.swegate`) & Audit Ledger Retrieval (`query_audit_ledger`)**:
+   - Deterministic unified-diff and architectural regression verifier enforcing cyclomatic complexity delta bounds, disallowed module imports, and `# type: ignore` bans via `evaluate_patch`, paired with read-only forensic inspection of `SweGateStore` (`EVL-...`) and `TraceKitStore` (`SES-...`) via `query_audit_ledger`.
 
 ---
 

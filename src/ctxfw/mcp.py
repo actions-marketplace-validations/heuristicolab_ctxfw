@@ -1,8 +1,10 @@
 # manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 """
-src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v3.4.0)
+src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v4.0.0)
 manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
-Exposes deterministic context pruning and topological bundle resolution
+manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
+Exposes deterministic context pruning, topological bundle resolution,
+axiomatic spec evaluation, SWE-Gate patch verification, and audit ledger querying
 to AI agents (Cursor, Claude Code, Windsurf) using JSON-RPC 2.0.
 """
 from __future__ import annotations
@@ -370,14 +372,27 @@ class MCPServer:
                 "name": self.SERVER_NAME,
                 "version": f"{__version__}",
             },
+            "instructions": (
+                "Deterministic Context Firewall & Sovereign Pentad Verification Workflow:\n"
+                "1. Architectural Intake: Call `evaluate_spec_axioms` on architectural briefs to verify determinism and negative invariants (ACI >= 0.9000).\n"
+                "2. Context Assembly: Call `resolve_context_bundle` for multi-module topological dependency bundles (D0/D1/D2/D3) or `prune_file` for single-file AST interface extraction.\n"
+                "3. Pre-Merge Verification: Call `evaluate_patch` on unified git diffs to enforce cyclomatic complexity budgets, type-ignore bans, import restrictions, and functional test gates.\n"
+                "4. Forensic Audit Retrieval: Call `query_audit_ledger` to inspect persisted SWE-Gate evaluation records (`EVL-...`) or verify cryptographic SHA-256 hash-chained sessions (`SES-...`)."
+            ),
         }
 
     def handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Lists available context compacting tools."""
-        tool_annotations = {
+        """Lists available context compacting, verification, and audit query tools."""
+        read_only_annotations = {
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
+            "openWorldHint": False,
+        }
+        write_audit_annotations = {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
             "openWorldHint": False,
         }
 
@@ -387,11 +402,13 @@ class MCPServer:
                     "name": "prune_file",
                     "description": (
                         "Extract semantic interfaces, types, pydantic models, sanitized raises, and signatures "
-                        "from a source file while replacing procedural bodies with AST stubs. Use this when you "
-                        "only need to inspect contracts or APIs of an individual dependency without ingesting "
-                        "raw implementation code. Does not modify files on disk (pure in-memory AST operation)."
+                        "from a source file (`path`) at a given pruning `depth` ('full', 'interface', or 'nominal') "
+                        "and `language`, optionally stripping docstrings (`strip_docs`), while replacing procedural "
+                        "bodies with AST stubs. Use this when you only need to inspect contracts or APIs of an "
+                        "individual dependency without ingesting raw implementation code. For multi-module dependency "
+                        "graphs, use `resolve_context_bundle` instead. Does not modify files on disk (pure in-memory AST operation)."
                     ),
-                    "annotations": tool_annotations,
+                    "annotations": read_only_annotations,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -443,12 +460,13 @@ class MCPServer:
                 {
                     "name": "resolve_context_bundle",
                     "description": (
-                        "Calculate topological dependency graph distances (D0 full target, D1 interface stubs, "
-                        "D2 nominal symbols) for an active target file and compile a token-pruned Markdown context bundle. "
-                        "Use this as your primary context builder before editing a file in a multi-module project. "
-                        "For inspecting isolated files, use prune_file instead. Read-only operation."
+                        "Calculate topological dependency graph distances (D0 full `target_file`, D1 interface stubs, "
+                        "D2 nominal symbols) within `project_root` and compile a token-pruned Markdown context bundle, "
+                        "with optional reactive degradation via `breaker_state` and `session_id`. Use this as your "
+                        "primary context builder before editing a file in a multi-module project. For inspecting "
+                        "isolated files, use `prune_file` instead. Read-only operation."
                     ),
-                    "annotations": tool_annotations,
+                    "annotations": read_only_annotations,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -497,11 +515,12 @@ class MCPServer:
                 {
                     "name": "evaluate_spec_axioms",
                     "description": (
-                        "Evaluate an architectural brief against formal determinism rules, negative invariant floors, "
-                        "and the Axiom Completeness Index (ACI 1.0000). Use this during intake or planning phases "
-                        "before writing code. Pure analytical evaluation with no side effects."
+                        "Evaluate an architectural specification brief (`brief_text`) against formal determinism rules, "
+                        "negative invariant floors ('never'/'shall never'), and the Axiom Completeness Index (ACI 1.0000). "
+                        "Use this during intake or planning phases before writing code. For verifying unified git diff "
+                        "patches, use `evaluate_patch` instead. Pure read-only analytical evaluation with no side effects."
                     ),
-                    "annotations": tool_annotations,
+                    "annotations": read_only_annotations,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -541,12 +560,13 @@ class MCPServer:
                 {
                     "name": "evaluate_patch",
                     "description": (
-                        "Verify a unified git diff patch against SWE-Gate architectural constraints "
-                        "(cyclomatic complexity delta, forbidden '# type: ignore' suppressions, "
-                        "disallowed module imports) and functional test results before allowing merge. "
-                        "Persists audit records in SweGateStore and seals cryptographic blocks in TraceKitStore."
+                        "Verify a unified git diff patch (`diff_text`) against SWE-Gate architectural constraints "
+                        "(`max_cyclomatic_delta`, `forbid_type_ignores`, `disallowed_import_modules`) and functional "
+                        "test results (`tests_passed`, `tests_failed`, `functional_verdict`) before allowing merge. "
+                        "Appends immutable audit records (`EVL-...`) in SweGateStore and seals cryptographic blocks in "
+                        "TraceKitStore; use `query_audit_ledger` to retrieve or verify persisted records."
                     ),
-                    "annotations": tool_annotations,
+                    "annotations": write_audit_annotations,
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -634,6 +654,65 @@ class MCPServer:
                             "isError": {
                                 "type": "boolean",
                                 "description": "True if the patch was rejected by SWE-Gate or failed validation",
+                            },
+                        },
+                        "required": ["content", "isError"],
+                    },
+                },
+                {
+                    "name": "query_audit_ledger",
+                    "description": (
+                        "Retrieve persisted SWE-Gate patch evaluation records and violation findings by `evaluation_id` "
+                        "(`EVL-...`), or verify and inspect cryptographic SHA-256 hash-chained audit sessions in "
+                        "TraceKitStore by `session_id` (`SES-...`) with optional block listing (`include_blocks`, `max_blocks`). "
+                        "Use this for forensic inspection and compliance verification after running `evaluate_patch` or "
+                        "context tools. Pure read-only query with zero ledger mutations."
+                    ),
+                    "annotations": read_only_annotations,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "evaluation_id": {
+                                "type": "string",
+                                "description": "SWE-Gate evaluation identifier (`EVL-<16 lowercase hex chars>`) returned by `evaluate_patch`",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "TraceKit session identifier (`SES-...`) to verify SHA-256 hash chain integrity and inspect blocks",
+                            },
+                            "include_blocks": {
+                                "type": "boolean",
+                                "description": "Whether to include individual hash-chained audit block records when querying `session_id`",
+                                "default": True,
+                            },
+                            "max_blocks": {
+                                "type": "integer",
+                                "description": "Maximum number of audit blocks to return when `include_blocks` is true (1 to 256)",
+                                "default": 50,
+                            },
+                        },
+                    },
+                    "outputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "array",
+                                "description": "JSON-serialized audit ledger query and cryptographic chain verification report",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": {"type": "string", "enum": ["text"]},
+                                        "text": {
+                                            "type": "string",
+                                            "description": "JSON report containing swegate_evaluation (with violations) and/or tracekit_session verification details",
+                                        },
+                                    },
+                                    "required": ["type", "text"],
+                                },
+                            },
+                            "isError": {
+                                "type": "boolean",
+                                "description": "True if neither identifier was provided, parameters failed validation, or no matching audit record was found",
                             },
                         },
                         "required": ["content", "isError"],
@@ -1132,6 +1211,164 @@ class MCPServer:
             "policyViolation": True,
         }
 
+    def _handle_query_audit_ledger(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Read-only retrieval of SWE-Gate evaluations and TraceKit hash-chained sessions."""
+        from ctxfw.audit.contracts import SESSION_ID_PATTERN, canonical_timestamp
+        from ctxfw.audit.verifier import apply_latch, fail_closed_audit, verify_chain
+        from ctxfw.kernel.clock import SystemUtcClock
+        from ctxfw.swegate.contracts import EVALUATION_ID_PATTERN
+
+        raw_eval_id = arguments.get("evaluation_id")
+        raw_session_id = arguments.get("session_id")
+        include_blocks = arguments.get("include_blocks", True)
+        max_blocks = arguments.get("max_blocks", 50)
+
+        has_eval = raw_eval_id is not None and (not isinstance(raw_eval_id, str) or bool(raw_eval_id.strip()))
+        has_session = raw_session_id is not None and (
+            not isinstance(raw_session_id, str) or bool(raw_session_id.strip())
+        )
+
+        if not has_eval and not has_session:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "VALIDATION_ERROR: At least one of 'evaluation_id' or 'session_id' must be provided.",
+                    }
+                ],
+                "isError": True,
+            }
+
+        if not isinstance(include_blocks, bool):
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "VALIDATION_ERROR: Parameter 'include_blocks' must be a boolean.",
+                    }
+                ],
+                "isError": True,
+            }
+
+        if isinstance(max_blocks, bool) or not isinstance(max_blocks, int) or not (1 <= max_blocks <= 256):
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "VALIDATION_ERROR: Parameter 'max_blocks' must be an integer between 1 and 256.",
+                    }
+                ],
+                "isError": True,
+            }
+
+        evaluation_id: Optional[str] = None
+        if has_eval:
+            if not isinstance(raw_eval_id, str) or re.fullmatch(EVALUATION_ID_PATTERN, raw_eval_id.strip()) is None:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"VALIDATION_ERROR: Invalid 'evaluation_id' format (expected {EVALUATION_ID_PATTERN}).",
+                        }
+                    ],
+                    "isError": True,
+                }
+            evaluation_id = raw_eval_id.strip()
+
+        session_id: Optional[str] = None
+        if has_session:
+            if not isinstance(raw_session_id, str) or re.fullmatch(SESSION_ID_PATTERN, raw_session_id.strip()) is None:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"VALIDATION_ERROR: Invalid 'session_id' format (expected {SESSION_ID_PATTERN}).",
+                        }
+                    ],
+                    "isError": True,
+                }
+            session_id = raw_session_id.strip()
+
+        swegate_report: Optional[Dict[str, Any]] = None
+        tracekit_report: Optional[Dict[str, Any]] = None
+        missing_targets: list[str] = []
+
+        if evaluation_id is not None:
+            sg_store = self._get_swegate_store()
+            eval_row = sg_store.get_evaluation(evaluation_id)
+            if eval_row is None:
+                missing_targets.append(f"evaluation_id={evaluation_id}")
+            else:
+                violations = sg_store.get_violations(evaluation_id)
+                swegate_report = {
+                    **eval_row,
+                    "violations": violations,
+                }
+
+        if session_id is not None:
+            tk_store = self._get_tracekit_store()
+            with tk_store._lock:
+                sess_row = tk_store._conn.execute(
+                    "SELECT genesis_hash, created_at FROM tracekit_sessions WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+
+            if sess_row is None:
+                missing_targets.append(f"session_id={session_id}")
+            else:
+                genesis_hash, session_created_at = sess_row[0], sess_row[1]
+                now_ts = SystemUtcClock().now()
+                blocks_list = []
+                try:
+                    blocks = tk_store.load_blocks(session_id)
+                    latched_seq = tk_store.latched_broken_seq(session_id)
+                    audit_dto = apply_latch(
+                        verify_chain(session_id, genesis_hash, blocks, now_ts),
+                        latched_seq,
+                    )
+                    if include_blocks:
+                        blocks_list = [
+                            {
+                                "block_id": b.block_id,
+                                "block_seq": b.block_seq,
+                                "prev_block_hash": b.prev_block_hash,
+                                "current_block_hash": b.current_block_hash,
+                                "intent_digest": b.intent_digest,
+                                "reasoning_digest": b.reasoning_digest,
+                                "action_digest": b.action_digest,
+                                "timestamp_utc": canonical_timestamp(b.timestamp_utc),
+                            }
+                            for b in blocks[:max_blocks]
+                        ]
+                except Exception:
+                    audit_dto = fail_closed_audit(session_id, now_ts)
+
+                tracekit_report = {
+                    "session_id": session_id,
+                    "genesis_hash": genesis_hash,
+                    "created_at": session_created_at,
+                    "total_blocks_audited": audit_dto.total_blocks_audited,
+                    "is_tampered": audit_dto.is_tampered,
+                    "broken_block_seq": audit_dto.broken_block_seq,
+                    "verified_at": canonical_timestamp(audit_dto.verified_at),
+                }
+                if include_blocks:
+                    tracekit_report["blocks"] = blocks_list
+
+        is_missing = len(missing_targets) > 0
+        payload: Dict[str, Any] = {
+            "status": "NOT_FOUND" if is_missing else "FOUND",
+            "swegate_evaluation": swegate_report,
+            "tracekit_session": tracekit_report,
+        }
+        if is_missing:
+            payload["missing"] = missing_targets
+
+        return {
+            "content": [{"type": "text", "text": json.dumps(payload, indent=2)}],
+            "isError": is_missing,
+        }
+
     def handle_tools_call(
         self, params: Any, arguments: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -1144,6 +1381,9 @@ class MCPServer:
         arguments = params.get("arguments")
         if not isinstance(arguments, dict):
             arguments = {}
+
+        if tool_name == "query_audit_ledger":
+            return ToolResult(self._handle_query_audit_ledger(arguments))
 
         session_id = (
             arguments.get("session_id")

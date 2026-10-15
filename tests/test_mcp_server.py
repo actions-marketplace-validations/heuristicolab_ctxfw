@@ -1,7 +1,9 @@
+# manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
 """
-tests/test_mcp_server.py — Comprehensive Test Suite for MCP Server over stdio (Sprint 3.2)
+tests/test_mcp_server.py — Comprehensive Test Suite for MCP Server over stdio (v4.0.0)
+manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
 Validates JSON-RPC 2.0 handshake, tool enumeration, context pruning,
-topological bundle resolution, caching, stdio hygiene, and error shielding.
+topological bundle resolution, audit ledger querying, caching, stdio hygiene, and error shielding.
 """
 from __future__ import annotations
 
@@ -68,6 +70,15 @@ def test_handshake_and_notifications(mcp_server: MCPServer):
     assert result["serverInfo"]["name"] == "context-firewall-mcp"
     assert result["serverInfo"]["version"] == __version__
     assert "tools" in result["capabilities"]
+    assert "instructions" in result
+    for tool_name in (
+        "evaluate_spec_axioms",
+        "resolve_context_bundle",
+        "prune_file",
+        "evaluate_patch",
+        "query_audit_ledger",
+    ):
+        assert tool_name in result["instructions"]
 
     # Notifications must be silently acknowledged with None (no JSON-RPC response)
     notify_req = {
@@ -78,7 +89,7 @@ def test_handshake_and_notifications(mcp_server: MCPServer):
 
 
 def test_tools_list_schema(mcp_server: MCPServer):
-    """Asserts that tools/list exposes tools with valid schemas and Glama TDQS metadata."""
+    """Asserts that tools/list exposes all 5 tools with valid schemas and Glama TDQS 5.0 metadata."""
     list_req = {
         "jsonrpc": "2.0",
         "id": "req-2",
@@ -92,9 +103,13 @@ def test_tools_list_schema(mcp_server: MCPServer):
     tools = resp["result"]["tools"]
     tool_map = {t["name"]: t for t in tools}
 
-    assert "prune_file" in tool_map
-    assert "resolve_context_bundle" in tool_map
-    assert "evaluate_spec_axioms" in tool_map
+    assert set(tool_map.keys()) == {
+        "prune_file",
+        "resolve_context_bundle",
+        "evaluate_spec_axioms",
+        "evaluate_patch",
+        "query_audit_ledger",
+    }
 
     # Validate prune_file schema
     prune_schema = tool_map["prune_file"]["inputSchema"]
@@ -110,8 +125,16 @@ def test_tools_list_schema(mcp_server: MCPServer):
     assert "target_file" in bundle_schema["required"]
     assert "project_root" in bundle_schema["properties"]
 
-    # Validate Glama TDQS annotations and outputSchema
-    for t_name in ["prune_file", "resolve_context_bundle", "evaluate_spec_axioms"]:
+    # Validate query_audit_ledger schema
+    query_schema = tool_map["query_audit_ledger"]["inputSchema"]
+    assert query_schema["type"] == "object"
+    assert "evaluation_id" in query_schema["properties"]
+    assert "session_id" in query_schema["properties"]
+    assert "include_blocks" in query_schema["properties"]
+    assert "max_blocks" in query_schema["properties"]
+
+    # Validate Glama TDQS annotations and outputSchema for read-only tools
+    for t_name in ["prune_file", "resolve_context_bundle", "evaluate_spec_axioms", "query_audit_ledger"]:
         tool = tool_map[t_name]
         assert "annotations" in tool
         assert tool["annotations"]["readOnlyHint"] is True
@@ -122,6 +145,18 @@ def test_tools_list_schema(mcp_server: MCPServer):
         assert tool["outputSchema"]["type"] == "object"
         assert "content" in tool["outputSchema"]["required"]
         assert "isError" in tool["outputSchema"]["required"]
+
+    # Validate evaluate_patch behavioral annotations (writes immutable audit records)
+    patch_tool = tool_map["evaluate_patch"]
+    assert patch_tool["annotations"] == {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": False,
+    }
+    assert "outputSchema" in patch_tool
+    assert "content" in patch_tool["outputSchema"]["required"]
+    assert "isError" in patch_tool["outputSchema"]["required"]
 
 
 def test_tools_call_prune_file(mcp_server: MCPServer, tmp_path: Path):
@@ -357,3 +392,168 @@ def test_stdio_loop_hygiene_and_content_length_zero_leak_bytes(mcp_server: MCPSe
     frame2 = json.loads(lines[1])
     assert frame2["id"] == 100
     assert frame2["result"] == {}
+
+
+def test_query_audit_ledger_retrieves_swegate_and_tracekit_read_only(tmp_path: Path):
+    """
+    Verifies that query_audit_ledger retrieves persisted SweGateStore evaluations (with violations)
+    and verifies TraceKitStore hash-chained sessions without writing any new audit blocks or events.
+    """
+    from ctxfw.audit.store import TraceKitStore
+    from ctxfw.kernel.clock import SystemUtcClock
+    from ctxfw.swegate.store import SweGateStore
+
+    cache = LocalSemanticCache(str(tmp_path / "cache.db"))
+    trace_store = TraceKitStore(tmp_path / "tracekit.db", clock=SystemUtcClock())
+    swegate_store = SweGateStore(tmp_path / "swegate.db")
+    session_id = "SES-glama-tdqs5-audit-01"
+
+    server = MCPServer(
+        cache=cache,
+        tracekit_store=trace_store,
+        swegate_store=swegate_store,
+        session_id=session_id,
+    )
+
+    # 1. Execute evaluate_patch with a # type: ignore violation so both SweGateStore & TraceKitStore persist records
+    diff_text = (
+        "--- a/src/service/auth.py\n"
+        "+++ b/src/service/auth.py\n"
+        "@@ -1,2 +1,3 @@\n"
+        " def verify_token(token: str) -> bool:\n"
+        "+    raw = token  # type: ignore\n"
+        "     return bool(token)\n"
+    )
+    patch_res = server.handle_tools_call(
+        {
+            "name": "evaluate_patch",
+            "arguments": {
+                "diff_text": diff_text,
+                "commit_sha": "a" * 40,
+            },
+        }
+    )
+    assert patch_res["isError"] is True
+    evaluation_id = patch_res["evaluationId"]
+    assert evaluation_id.startswith("EVL-")
+
+    blocks_before = len(trace_store.load_blocks(session_id))
+    assert blocks_before == 1
+    with trace_store._lock:
+        verif_events_before = trace_store._conn.execute(
+            "SELECT COUNT(*) FROM tracekit_verification_events WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()[0]
+    assert verif_events_before == 0
+
+    # 2. Query both evaluation_id and session_id via query_audit_ledger
+    query_res = server.handle_tools_call(
+        {
+            "name": "query_audit_ledger",
+            "arguments": {
+                "evaluation_id": evaluation_id,
+                "session_id": session_id,
+                "include_blocks": True,
+                "max_blocks": 10,
+            },
+        }
+    )
+    assert query_res["isError"] is False
+    report = json.loads(query_res["content"][0]["text"])
+    assert report["status"] == "FOUND"
+
+    # Verify SweGate evaluation & violations
+    sg = report["swegate_evaluation"]
+    assert sg is not None
+    assert sg["evaluation_id"] == evaluation_id
+    assert sg["commit_sha"] == "a" * 40
+    assert sg["gate_verdict"] == "REJECT_ARCHITECTURAL_VIOLATION"
+    assert sg["violations_count"] == 1
+    assert len(sg["violations"]) == 1
+    assert sg["violations"][0]["violation_type"] == "TYPE_IGNORE"
+    assert sg["violations"][0]["symbol_or_file"] == "src/service/auth.py:2"
+
+    # Verify TraceKit session chain verification & blocks
+    tk = report["tracekit_session"]
+    assert tk is not None
+    assert tk["session_id"] == session_id
+    assert tk["total_blocks_audited"] == 1
+    assert tk["is_tampered"] is False
+    assert tk["broken_block_seq"] is None
+    assert len(tk["blocks"]) == 1
+    assert tk["blocks"][0]["block_seq"] == 0
+
+    # 3. Verify 100% read-only idempotency (zero blocks or verification events appended by query_audit_ledger)
+    assert len(trace_store.load_blocks(session_id)) == blocks_before
+    with trace_store._lock:
+        verif_events_after = trace_store._conn.execute(
+            "SELECT COUNT(*) FROM tracekit_verification_events WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()[0]
+    assert verif_events_after == 0
+
+    # 4. Query with include_blocks=False
+    query_no_blocks = server.handle_tools_call(
+        {
+            "name": "query_audit_ledger",
+            "arguments": {
+                "session_id": session_id,
+                "include_blocks": False,
+            },
+        }
+    )
+    assert query_no_blocks["isError"] is False
+    report_no_blocks = json.loads(query_no_blocks["content"][0]["text"])
+    assert "blocks" not in report_no_blocks["tracekit_session"]
+
+    swegate_store.close()
+    trace_store.close()
+
+
+def test_query_audit_ledger_validation_and_not_found(mcp_server: MCPServer):
+    """Verifies strict input bounds and NOT_FOUND reporting in query_audit_ledger."""
+    # 1. Neither evaluation_id nor session_id provided
+    r_empty = mcp_server.handle_tools_call({"name": "query_audit_ledger", "arguments": {}})
+    assert r_empty["isError"] is True
+    assert "VALIDATION_ERROR" in r_empty["content"][0]["text"]
+
+    # 2. Invalid evaluation_id format
+    r_bad_eval = mcp_server.handle_tools_call(
+        {"name": "query_audit_ledger", "arguments": {"evaluation_id": "BAD-EVAL-ID"}}
+    )
+    assert r_bad_eval["isError"] is True
+    assert "Invalid 'evaluation_id' format" in r_bad_eval["content"][0]["text"]
+
+    # 3. Invalid session_id format
+    r_bad_sess = mcp_server.handle_tools_call(
+        {"name": "query_audit_ledger", "arguments": {"session_id": "bad_session"}}
+    )
+    assert r_bad_sess["isError"] is True
+    assert "Invalid 'session_id' format" in r_bad_sess["content"][0]["text"]
+
+    # 4. Out-of-bounds max_blocks
+    r_bad_max = mcp_server.handle_tools_call(
+        {
+            "name": "query_audit_ledger",
+            "arguments": {"session_id": "SES-valid-session-01", "max_blocks": 0},
+        }
+    )
+    assert r_bad_max["isError"] is True
+    assert "max_blocks" in r_bad_max["content"][0]["text"]
+
+    # 5. Valid format but non-existent records -> status: NOT_FOUND, isError: True
+    r_missing = mcp_server.handle_tools_call(
+        {
+            "name": "query_audit_ledger",
+            "arguments": {
+                "evaluation_id": "EVL-0123456789abcdef",
+                "session_id": "SES-nonexistent-0001",
+            },
+        }
+    )
+    assert r_missing["isError"] is True
+    missing_payload = json.loads(r_missing["content"][0]["text"])
+    assert missing_payload["status"] == "NOT_FOUND"
+    assert "evaluation_id=EVL-0123456789abcdef" in missing_payload["missing"]
+    assert "session_id=SES-nonexistent-0001" in missing_payload["missing"]
+

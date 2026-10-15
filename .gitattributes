@@ -26,3 +26,30 @@ src/ctxfw/sara/blueprint_manifest.json -text
 src/ctxfw/swegate/contracts.py -text
 src/ctxfw/swegate/schema.sql -text
 src/ctxfw/swegate/blueprint_manifest.json -text
+
+# Sentinel-verified LF files (zero CRLF invariant in test suites)
+src/ctxfw/mcp.py -text
+src/ctxfw/audit/__init__.py -text
+src/ctxfw/budget/__init__.py -text
+src/ctxfw/rules/__init__.py -text
+src/ctxfw/sara/__init__.py -text
+src/ctxfw/sara/lexical.py -text
+src/ctxfw/sara/induction.py -text
+src/ctxfw/sara/gate.py -text
+src/ctxfw/sara/store.py -text
+src/ctxfw/sara/audit.py -text
+src/ctxfw/swegate/__init__.py -text
+src/ctxfw/swegate/inspector.py -text
+src/ctxfw/swegate/gate.py -text
+src/ctxfw/swegate/store.py -text
+src/ctxfw/swegate/audit.py -text
+tests/test_audit_vendor.py -text
+tests/test_tokencast_vendor.py -text
+tests/test_rules_vendor.py -text
+tests/test_sara_vendor.py -text
+tests/test_sara_engine.py -text
+tests/test_swegate_vendor.py -text
+tests/test_swegate_engine.py -text
+tests/test_closed_loop_m4.py -text
+tests/test_mcp_server.py -text
+
