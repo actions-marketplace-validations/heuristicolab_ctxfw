@@ -110,7 +110,9 @@ scripts/*sales*.py
 *.cmd
 .gitea/
 .mypy_cache/
-.agents/
+.agents/*
+!.agents/skills/
+!.agents/skills/**
 .agent/
 scripts/*monitor*
 scripts/*sprint*

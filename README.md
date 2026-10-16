@@ -9,6 +9,7 @@
 [![Tests](https://img.shields.io/badge/TESTS-463%2F463_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
 **The deterministic boundary between probabilistic LLM hallucination and production infrastructure.**
 
@@ -124,12 +125,21 @@ export ANTHROPIC_BASE_URL="http://localhost:8765/v1"
 export OPENAI_BASE_URL="http://localhost:8765/v1"
 ```
 
-### 4. Verified MCP Registry (Glama)
-CTXFW is indexed and verified with Grade A compliance on the official Glama MCP registry:
+### 4. Verified Registries & Agent Skills (Glama & Skills Directory)
+CTXFW is independently audited and certified with **Grade A** compliance across both the official **Glama MCP Registry** (`TDQS 4.5/5.0 · Security 100/100`) and **Skills Directory** (`Security: A 100/100` across 120 static security patterns):
 
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
-Direct access to tool inspection, schemas, and live diagnostic telemetry on [Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw).
+Install the verified Claude Code / Agent skills directly into `.claude/skills/`:
+```bash
+npx -y skills add heuristicolab/ctxfw --skill context-firewall --agent claude-code
+npx -y skills add heuristicolab/ctxfw --skill axiom-sieve --agent claude-code
+npx -y skills add heuristicolab/ctxfw --skill eval-benchmark --agent claude-code
+npx -y skills add heuristicolab/ctxfw --skill precommit-sentry --agent claude-code
+```
+
+Direct access to tool inspection, schemas, and live diagnostic telemetry on [Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw) and [Skills Directory](https://www.skillsdirectory.com/authors/heuristicolab).
 
 ---
 
