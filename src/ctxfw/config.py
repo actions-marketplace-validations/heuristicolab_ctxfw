@@ -1,6 +1,7 @@
 """
-src/ctxfw/config.py — Dynamic Configuration Engine (v4.0.0-dev)
-manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
+src/ctxfw/config.py — Dynamic Configuration Engine (v4.1.0)
+manifest_hash: 0dd507acac7dc966a16fa69ccffcb7a51797ce899ca6edab88837448ad38d415
+legacy_manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
 
 Manages persistent user configuration in ~/.ctxfw/config.json and workspace .ctxfwrc
 with Pydantic v2 immutability, atomic filesystem staging (.tmp -> os.replace),
@@ -39,11 +40,13 @@ class EngineConfigDTO(BaseModel):
 
 
 class FinOpsConfigDTO(BaseModel):
-    """Configuration governing pricing calculation and FinOps roast diagnostics."""
+    """Configuration governing pricing calculation, model selection, and FinOps roast diagnostics."""
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    input_price_per_m: float = Field(default=3.0, ge=0.01, le=100.0, description="Input price in USD per 1M tokens")
-    output_price_per_m: float = Field(default=15.0, ge=0.01, le=500.0, description="Output price in USD per 1M tokens")
+    model: str = Field(default="auto", min_length=1, max_length=128, description="Active LLM identifier or alias (e.g. auto, claude-sonnet-4, claude-opus-4, gpt-4.1)")
+    input_price_per_m: float = Field(default=3.0, ge=0.01, le=500.0, description="Input price in USD per 1M tokens")
+    output_price_per_m: float = Field(default=15.0, ge=0.01, le=1000.0, description="Output price in USD per 1M tokens")
+    compounding_factor: float = Field(default=4.2, ge=1.0, le=20.0, description="Multi-turn session compounding multiplier (1.0 to 20.0)")
     roast: bool = Field(default=True, description="Master toggle for FinOps terminal roast humor")
     roast_level: RoastLevel = Field(default=RoastLevel.CYNICAL, description="Roast intensity: cynical, sober, or off")
 
@@ -335,6 +338,17 @@ def set_config_value(key_path: str, value: Any, custom_path: Optional[Path | str
                 pass
 
     data[target_section][target_field] = value
+    if target_section == "finops" and target_field == "model" and isinstance(value, str):
+        if value.strip().lower() not in {"", "auto"}:
+            try:
+                from ctxfw.finops import resolve_model_spec
+
+                spec = resolve_model_spec(value)
+                data["finops"]["input_price_per_m"] = spec.input_price_per_m
+                data["finops"]["output_price_per_m"] = spec.output_price_per_m
+            except Exception:
+                pass
+
     new_config = AppConfigDTO.model_validate(data)
     save_config(new_config, custom_path)
     return new_config

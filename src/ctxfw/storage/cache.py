@@ -152,6 +152,7 @@ class LocalSemanticCache:
                 savings_percentage REAL NOT NULL,
                 project_id TEXT NOT NULL DEFAULT 'REPO-0000000000000000',
                 project_name TEXT NOT NULL DEFAULT 'global',
+                model_name TEXT NOT NULL DEFAULT 'auto',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
@@ -163,6 +164,10 @@ class LocalSemanticCache:
         if "project_name" not in existing_cols:
             conn.execute(
                 "ALTER TABLE tokens_cache ADD COLUMN project_name TEXT NOT NULL DEFAULT 'global';"
+            )
+        if "model_name" not in existing_cols:
+            conn.execute(
+                "ALTER TABLE tokens_cache ADD COLUMN model_name TEXT NOT NULL DEFAULT 'auto';"
             )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_tokens_cache_project ON tokens_cache(project_name);"
@@ -220,9 +225,14 @@ class LocalSemanticCache:
         self._l1_cache[cache_key] = dto
         return dto
 
-    def attribute_project(self, cache_key: str, project_root: Optional[str | Path] = None) -> None:
+    def attribute_project(
+        self,
+        cache_key: str,
+        project_root: Optional[str | Path] = None,
+        model_name: Optional[str] = None,
+    ) -> None:
         """
-        Associates an existing cached entry with its active project_id and project_name
+        Associates an existing cached entry with its active project_id, project_name, and model_name
         when the entry was previously stored under the unscoped 'global' bucket.
         """
         if project_root is None:
@@ -230,15 +240,22 @@ class LocalSemanticCache:
         project_id, project_name = resolve_project_identity(project_root)
         if project_name == "global":
             return
+        resolved_model = "auto"
+        try:
+            from ctxfw.finops import resolve_active_model
+
+            resolved_model = resolve_active_model(model_name, project_root).model_id
+        except Exception:
+            pass
         try:
             with self._get_connection() as conn:
                 conn.execute(
                     """
                     UPDATE tokens_cache
-                    SET project_id = ?, project_name = ?
+                    SET project_id = ?, project_name = ?, model_name = ?
                     WHERE cache_key = ? AND (project_name = 'global' OR project_name = '')
                     """,
-                    (project_id, project_name, cache_key),
+                    (project_id, project_name, resolved_model, cache_key),
                 )
         except Exception:
             pass
@@ -248,25 +265,35 @@ class LocalSemanticCache:
         cache_key: str,
         result: OptimizationResultDTO,
         project_root: Optional[str | Path] = None,
+        model_name: Optional[str] = None,
     ):
         self._l1_cache[cache_key] = result.model_copy(update={"cache_hit": True})
         depth_val = result.depth.value if hasattr(result.depth, "value") else str(result.depth)
         project_id, project_name = resolve_project_identity(project_root)
+        resolved_model = "auto"
+        try:
+            from ctxfw.finops import resolve_active_model
+
+            resolved_model = resolve_active_model(model_name, project_root).model_id
+        except Exception:
+            pass
 
         with self._get_connection() as conn:
             if project_name == "global":
                 cur = conn.execute(
-                    "SELECT project_id, project_name FROM tokens_cache WHERE cache_key = ?",
+                    "SELECT project_id, project_name, model_name FROM tokens_cache WHERE cache_key = ?",
                     (cache_key,),
                 )
                 existing = cur.fetchone()
                 if existing and existing[1] and existing[1] != "global":
                     project_id, project_name = existing[0], existing[1]
+                    if len(existing) > 2 and existing[2] and existing[2] != "auto":
+                        resolved_model = existing[2]
 
             conn.execute("""
                 INSERT OR REPLACE INTO tokens_cache 
-                (cache_key, pruned_code, pruning_depth, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage, project_id, project_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (cache_key, pruned_code, pruning_depth, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage, project_id, project_name, model_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cache_key,
                 result.pruned_code,
@@ -277,6 +304,7 @@ class LocalSemanticCache:
                 result.savings_percentage,
                 project_id,
                 project_name,
+                resolved_model,
             ))
 
     @staticmethod

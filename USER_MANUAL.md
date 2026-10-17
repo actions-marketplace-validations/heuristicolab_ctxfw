@@ -2,7 +2,7 @@
 ### Target System: `ord-2026-4f003b` | Heuristico LAB Sovereign Core
 
 [![Security Review](https://img.shields.io/badge/Security-Air--Gapped%20Certified-00ff66?style=flat-square)]()
-[![Spec Version](https://img.shields.io/badge/Version-4.0.1-blue?style=flat-square)]()
+[![Spec Version](https://img.shields.io/badge/Version-4.1.0-blue?style=flat-square)]()
 [![Compliance](https://img.shields.io/badge/Compliance-NDA%20%26%20IP%20Shield-purple?style=flat-square)]()
 
 ---

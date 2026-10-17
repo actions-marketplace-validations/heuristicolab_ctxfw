@@ -352,13 +352,19 @@ def record_request_telemetry(
     tokens_saved: int,
     background_tasks: Optional[BackgroundTasks] = None,
 ):
-    """Asynchronously records anonymous telemetry event and schedules heartbeat push."""
+    """Asynchronously records anonymous telemetry event using live model pricing and schedules heartbeat push."""
     try:
         model_name = str(raw_body.get("model", "unknown"))
         tokens_orig = estimate_payload_tokens(raw_body)
         if tokens_orig < tokens_saved:
             tokens_orig = tokens_saved + 50
-        usd_avoided = round((tokens_saved / 1_000_000.0) * 3.0, 6)
+        try:
+            from ctxfw.finops import resolve_model_spec
+
+            price_per_m = resolve_model_spec(model_name).input_price_per_m
+        except Exception:
+            price_per_m = 3.0
+        usd_avoided = round((tokens_saved / 1_000_000.0) * price_per_m, 6)
 
         dev_uuid = get_or_create_dev_uuid()
         record = TelemetryRecordDTO(
@@ -474,6 +480,15 @@ async def forward_upstream(
         )
         resp_headers = dict(upstream_resp.headers)
         resp_headers.update(base_headers)
+        try:
+            resp_json = upstream_resp.json()
+            if isinstance(resp_json, dict) and isinstance(resp_json.get("usage"), dict):
+                usage = resp_json["usage"]
+                out_tok = usage.get("output_tokens") or usage.get("completion_tokens")
+                if isinstance(out_tok, int) and out_tok >= 0:
+                    resp_headers["X-Upstream-Output-Tokens"] = str(out_tok)
+        except Exception:
+            pass
         return Response(
             content=upstream_resp.content,
             status_code=upstream_resp.status_code,
