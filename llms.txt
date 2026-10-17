@@ -42,4 +42,11 @@ CTXFW (Context Framework) is an in-memory, deterministic AST pruning firewall an
 
 ## API & Endpoints
 - Documentation & Live Sensor: https://ctxfw.heuristicolab.com
+- Canonical Model & LiveBench Matrix (JSON): https://ctxfw.heuristicolab.com/v1/model-matrix.json
 - Architectural Inquiries: mo@heuristicolab.com
+
+## Multi-Turn LLM Token Economics (4.2x Compounding) & Licensing Tiers (#pricing)
+- **Why Multi-Turn Savings = 4.2x Single-Turn Ingestion:** Stateless LLM APIs re-send accumulated conversation history on every turn. Across a 15-turn coding session with Prompt Caching (`1.25x` Cache Write on Turn 1, `0.10x` Cache Read on fast follow-ups, and `1.25x` Cache Write re-billing after 5-minute TTL pauses), pruning 72.4% of D1-D3 AST noise on Turn 1 yields a conservative `4.2x` compounded cost reduction.
+- **Community Sovereign ($0 / Apache 2.0):** Full 5-tool MCP server, D0->D3 AST pruner, multi-repo SQLite WAL isolation, 100% air-gapped zero telemetry.
+- **Team Governance ($29 USD / dev / month):** CI/CD Pull Request Gate (`ctxfw gate`), tamper-evident SHA-256 team FinOps consolidation (`ctxfw report --team-merge`), unified squad `TokenCast` budgets & `RulesCompiler` policies.
+- **Enterprise & Tier 0 Argos Audit ($1,500 USD flat 24h audit / Custom Annual VPC):** 24h forensic nSLOC audit, air-gapped multi-node proxy, SOC 2 / PCI-DSS / EU AI Act cryptographic `TraceKit` exports, <4h SLA.
