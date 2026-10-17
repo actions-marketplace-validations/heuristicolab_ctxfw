@@ -539,12 +539,17 @@ class ContextFirewallEngine:
                     execution_ms=0.0,
                     depth=depth,
                 )
-                self.cache.set(cache_key, dto)
+                try:
+                    self.cache.set(cache_key, dto, project_root=self.project_root)
+                except TypeError:
+                    self.cache.set(cache_key, dto)
                 entries[rel_path] = dto
                 continue
 
             cached_result = self.cache.get(cache_key)
             if cached_result is not None:
+                if hasattr(self.cache, "attribute_project"):
+                    self.cache.attribute_project(cache_key, self.project_root)
                 entries[rel_path] = cached_result
             else:
                 try:
@@ -579,7 +584,10 @@ class ContextFirewallEngine:
                         execution_ms=0.0,
                         depth=depth,
                     )
-                self.cache.set(cache_key, dto)
+                try:
+                    self.cache.set(cache_key, dto, project_root=self.project_root)
+                except TypeError:
+                    self.cache.set(cache_key, dto)
                 entries[rel_path] = dto
 
         ambient_manifest_str: Optional[str] = None
@@ -599,7 +607,12 @@ class ContextFirewallEngine:
                         continue
                 valid_candidates.append(rel_path)
 
-            cached_d3 = self.cache.get_d3_symbols_batch(valid_candidates)
+            try:
+                cached_d3 = self.cache.get_d3_symbols_batch(
+                    valid_candidates, project_root=self.project_root
+                )
+            except TypeError:
+                cached_d3 = self.cache.get_d3_symbols_batch(valid_candidates)
 
             d3_lines: List[str] = [
                 "### AMBIENT MANIFEST [D3] (Zero-Syntax Symbol Index)",
@@ -662,7 +675,12 @@ class ContextFirewallEngine:
                 total_chars += len(line) + 1
 
             if records_to_cache:
-                self.cache.set_d3_symbols_batch(records_to_cache)
+                try:
+                    self.cache.set_d3_symbols_batch(
+                        records_to_cache, project_root=self.project_root
+                    )
+                except TypeError:
+                    self.cache.set_d3_symbols_batch(records_to_cache)
 
             if len(d3_lines) > 2:
                 ambient_manifest_str = "\n".join(d3_lines)

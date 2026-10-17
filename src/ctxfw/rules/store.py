@@ -288,6 +288,59 @@ class RulesStore:
 
         return self._execute_with_retry(_query)
 
+    def get_guards_for_source(
+        self,
+        source_file_path: str,
+        file_sha256: str | None = None,
+    ) -> list[CompiledAstGuardDTO]:
+        """
+        Fetch compiled guards strictly scoped to a specific workspace rule file
+        (and optional SHA-256 content hash) to prevent cross-repository contamination.
+        """
+        def _query(conn: sqlite3.Connection) -> list[CompiledAstGuardDTO]:
+            if file_sha256 is not None:
+                cur = conn.execute(
+                    """
+                    SELECT g.guard_id, g.manifest_id, g.rule_intent, g.target_expression
+                    FROM compiled_ast_guards g
+                    JOIN compiled_rule_manifests m ON g.manifest_id = m.manifest_id
+                    WHERE m.source_file_path = ? AND m.file_sha256 = ?
+                    ORDER BY g.rowid ASC
+                    """,
+                    (source_file_path, file_sha256),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    SELECT g.guard_id, g.manifest_id, g.rule_intent, g.target_expression
+                    FROM compiled_ast_guards g
+                    JOIN compiled_rule_manifests m ON g.manifest_id = m.manifest_id
+                    WHERE m.source_file_path = ?
+                    ORDER BY g.rowid ASC
+                    """,
+                    (source_file_path,),
+                )
+            guards: list[CompiledAstGuardDTO] = []
+            for r in cur.fetchall():
+                try:
+                    intent = RuleIntent(r[2])
+                    gid = r[0]
+                    rid = f"RULE-{gid[4:]}" if gid.startswith("GRD-") else f"RULE-{gid}"
+                    guards.append(
+                        CompiledAstGuardDTO(
+                            guard_id=gid,
+                            rule_id=rid,
+                            pattern_type=INTENT_TO_PATTERN[intent],
+                            target_symbol_or_path=r[3],
+                            is_strict_deny=True,
+                        )
+                    )
+                except Exception:
+                    continue
+            return guards
+
+        return self._execute_with_retry(_query)
+
     def close(self) -> None:
         """Close connection."""
         with self._lock:

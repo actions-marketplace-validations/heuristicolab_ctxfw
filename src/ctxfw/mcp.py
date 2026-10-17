@@ -9,6 +9,7 @@ to AI agents (Cursor, Claude Code, Windsurf) using JSON-RPC 2.0.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -80,6 +81,7 @@ class MCPServer:
         self._swegate_rule = swegate_rule
         self._swegate_repo_id = swegate_repo_id
         self._guards = tuple(guards) if guards is not None else ()
+        self._workspace_guards_cache: Dict[tuple[str, str], tuple[Any, ...]] = {}
         self.session_id = session_id or os.environ.get("CTXFW_SESSION_ID")
         self._enforce_seq = 0
 
@@ -253,26 +255,63 @@ class MCPServer:
         )
 
     def _get_active_guards(self, project_root: Optional[Path] = None) -> tuple[Any, ...]:
-        """Load active compiled guards from instance, store, or workspace rule files."""
+        """
+        Load active compiled guards strictly scoped to the target workspace (project_root)
+        or explicit server-level guards, preventing cross-repository rule contamination.
+        """
         if self._guards:
             return self._guards
+
         store = self._get_rules_store()
-        guards = tuple(store.get_all_guards())
-        if guards:
-            return guards
+        collected: list[Any] = []
+        seen_ids: set[str] = set()
+
         if project_root and project_root.is_dir():
+            search_root = project_root.resolve()
+            cur = search_root
+            for _ in range(6):
+                if any((cur / m).exists() for m in (".cursorrules", "CLAUDE.md", ".git", "pyproject.toml")):
+                    search_root = cur
+                    break
+                if cur.parent == cur:
+                    break
+                cur = cur.parent
+
             for rule_name in ("CLAUDE.md", ".cursorrules"):
-                rf = project_root / rule_name
+                rf = search_root / rule_name
                 if rf.is_file():
                     try:
-                        from ctxfw.rules.compiler import RulesCompiler
+                        raw_text = rf.read_text(encoding="utf-8", errors="replace")
+                        rf_posix = rf.resolve().as_posix()[:512]
+                        file_sha = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+                        cache_key = (rf_posix, file_sha)
+                        if cache_key in self._workspace_guards_cache:
+                            ws_guards = self._workspace_guards_cache[cache_key]
+                        else:
+                            existing = store.get_guards_for_source(rf_posix, file_sha)
+                            if existing:
+                                ws_guards = tuple(existing)
+                            else:
+                                from ctxfw.rules.compiler import RulesCompiler
 
-                        manifest, _, _ = RulesCompiler.compile_file(rf)
-                        store.persist_manifest(manifest)
-                        return manifest.guards
+                                manifest, _, _ = RulesCompiler.compile_text(rf_posix, raw_text)
+                                if manifest is not None:
+                                    store.persist_manifest(manifest)
+                                    ws_guards = tuple(manifest.guards)
+                                else:
+                                    ws_guards = ()
+                            if len(self._workspace_guards_cache) >= 256:
+                                self._workspace_guards_cache.clear()
+                            self._workspace_guards_cache[cache_key] = ws_guards
+
+                        for g in ws_guards:
+                            if g.guard_id not in seen_ids:
+                                seen_ids.add(g.guard_id)
+                                collected.append(g)
                     except Exception:
                         pass
-        return ()
+
+        return tuple(collected)
 
     def _record_shadow_audit(self, params: Dict[str, Any], result: Dict[str, Any]) -> None:
         """
@@ -1479,13 +1518,20 @@ class MCPServer:
 
             active_guards = self._get_active_guards(project_root=proj_root_path)
             if active_guards:
-                args_repr = " ".join(
-                    str(v).encode("utf-8", errors="replace").decode("utf-8")
-                    for k, v in arguments.items()
-                    if k not in ("diff_text", "patch_diff", "diff", "new_content", "brief_text")
-                    and isinstance(v, (str, int, float))
-                    and not isinstance(v, bool)
-                )
+                formatted_tokens: list[str] = []
+                for k, v in arguments.items():
+                    if (
+                        k not in ("diff_text", "patch_diff", "diff", "new_content", "brief_text")
+                        and isinstance(v, (str, int, float))
+                        and not isinstance(v, bool)
+                    ):
+                        s_val = str(v).encode("utf-8", errors="replace").decode("utf-8")
+                        if k in ("path", "target_file", "project_root"):
+                            s_val = s_val.replace("\\", "/")
+                            if " " in s_val:
+                                s_val = f'"{s_val}"'
+                        formatted_tokens.append(s_val)
+                args_repr = " ".join(formatted_tokens)
                 raw_tool_call = f"{tool_name} {args_repr}".strip()
 
                 self._enforce_seq += 1
@@ -1616,7 +1662,10 @@ class MCPServer:
                             )
                             cached = self.cache.get(cache_key)
                             dto: Optional[OptimizationResultDTO] = None
+                            active_proj_root = proj_root_path or file_path.parent
                             if cached is not None:
+                                if hasattr(self.cache, "attribute_project"):
+                                    self.cache.attribute_project(cache_key, active_proj_root)
                                 pruned_code = cached.pruned_code
                             else:
                                 req = OptimizationRequestDTO(
@@ -1646,7 +1695,10 @@ class MCPServer:
                                 user_prompt=str(user_prompt),
                             )
                             if dto is not None and not result.get("saraQuarantined"):
-                                self.cache.set(cache_key, dto)
+                                try:
+                                    self.cache.set(cache_key, dto, project_root=active_proj_root)
+                                except TypeError:
+                                    self.cache.set(cache_key, dto)
 
             elif tool_name == "resolve_context_bundle":
                 if any(k in arguments for k in ("diff_text", "patch_diff", "diff")):

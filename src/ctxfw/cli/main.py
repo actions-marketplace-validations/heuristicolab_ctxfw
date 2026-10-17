@@ -844,7 +844,7 @@ def handle_mode_command(argv: list[str]) -> int:
 
 def generate_share_report(db_path: Optional[str] = None) -> str:
     """
-    Generates a shareable Markdown report with telemetry and ROI.
+    Generates a shareable Markdown report with telemetry, per-repository breakdown, and ROI.
     Strictly enforces Invariant 4:
     The share reporter shall never include unpruned source code,
     private credentials, or raw file paths in the generated markdown output.
@@ -861,22 +861,61 @@ def generate_share_report(db_path: Optional[str] = None) -> str:
     tokens_saved = 0
     usd_avoided = 0.0
     cycles = 0
+    project_rows: list[tuple[str, int, int, int, float, float]] = []
 
     if db_file.is_file():
         try:
             conn = sqlite3.connect(str(db_file), timeout=3.0)
             cursor = conn.cursor()
             try:
-                row = cursor.execute("SELECT count(*), sum(original_chars), sum(estimated_tokens_saved) FROM tokens_cache").fetchone()
+                cols = {r[1] for r in cursor.execute("PRAGMA table_info(tokens_cache)").fetchall()}
+                if cols and "project_name" not in cols:
+                    conn.execute(
+                        "ALTER TABLE tokens_cache ADD COLUMN project_name TEXT NOT NULL DEFAULT 'global'"
+                    )
+                    conn.commit()
+                if cols and "project_id" not in cols:
+                    conn.execute(
+                        "ALTER TABLE tokens_cache ADD COLUMN project_id TEXT NOT NULL DEFAULT 'REPO-0000000000000000'"
+                    )
+                    conn.commit()
+
+                row = cursor.execute(
+                    "SELECT count(*), sum(original_chars), sum(estimated_tokens_saved) FROM tokens_cache"
+                ).fetchone()
                 if row and row[0]:
                     cycles += row[0]
                     total_evaluated += (row[1] or 0) // 4
-                    tokens_saved += row[2] or 0
+                    saved_from_cache = row[2] or 0
+                    tokens_saved += saved_from_cache
+                    usd_avoided += (saved_from_cache / 1_000_000.0) * cfg.finops.input_price_per_m
+
+                raw_proj = cursor.execute(
+                    """
+                    SELECT COALESCE(NULLIF(project_name, ''), 'global') AS proj,
+                           COUNT(*),
+                           SUM(original_chars),
+                           SUM(estimated_tokens_saved)
+                    FROM tokens_cache
+                    GROUP BY proj
+                    ORDER BY SUM(estimated_tokens_saved) DESC, COUNT(*) DESC
+                    LIMIT 500
+                    """
+                ).fetchall()
+                for p_name, p_cycles, p_orig_chars, p_saved in raw_proj:
+                    safe_proj = re.sub(r"[^A-Za-z0-9._-]", "-", str(p_name or "global"))[:64] or "global"
+                    p_eval_tok = (p_orig_chars or 0) // 4
+                    p_saved_tok = p_saved or 0
+                    p_red_pct = (p_saved_tok / max(1, p_eval_tok) * 100.0) if p_eval_tok > 0 else 0.0
+                    p_usd = (p_saved_tok / 1_000_000.0) * cfg.finops.input_price_per_m
+                    project_rows.append((safe_proj, int(p_cycles or 0), p_eval_tok, p_saved_tok, p_red_pct, p_usd))
             except sqlite3.OperationalError:
                 pass
 
             try:
-                row2 = cursor.execute("SELECT count(*), sum(tokens_orig), sum(tokens_pruned), sum(usd_avoided) FROM telemetry_ledger").fetchone()
+                row2 = cursor.execute(
+                    "SELECT count(*), sum(tokens_orig), sum(tokens_pruned), sum(usd_avoided) FROM telemetry_ledger"
+                ).fetchone()
                 if row2 and row2[0]:
                     cycles += row2[0]
                     total_evaluated += row2[1] or 0
@@ -905,13 +944,29 @@ def generate_share_report(db_path: Optional[str] = None) -> str:
         f"- **Net Context Reduction:** {reduction_pct:.2f}%",
         f"- **Estimated Monetary Savings:** ${usd_avoided:.4f} USD",
         "",
-        "## 2. Operational Perimeter & Compliance",
+        "## 2. Per-Repository FinOps Breakdown",
+        "| Repository / Project | Cycles | Evaluated Tokens | Pruned Tokens | Reduction % | USD Saved |",
+        "| :--- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    if project_rows:
+        for p_name, p_cycles, p_eval, p_saved, p_red, p_usd in project_rows:
+            label = "`[legacy/global]`" if p_name == "global" else f"`{p_name}`"
+            lines.append(
+                f"| {label} | {p_cycles:,} | {p_eval:,} | {p_saved:,} | {p_red:.2f}% | ${p_usd:.4f} |"
+            )
+    else:
+        lines.append("| `[no-active-projects]` | 0 | 0 | 0 | 0.00% | $0.0000 |")
+
+    lines.extend([
+        "",
+        "## 3. Operational Perimeter & Compliance",
         f"- **Active Engine Mode:** `{cfg.engine.mode.value}`",
         f"- **Max Topological Depth:** D{cfg.engine.max_distance}",
+        "- **Per-Repository Isolation:** Enabled (Workspace-Scoped Rules & D3 Symbol Index)",
         "- **Air-Gap Verification:** Certified Local (Zero Cloud Telemetry Egress)",
         "- **Code Privacy Assurance:** Zero unpruned source code blocks or confidential logic exported.",
         "",
-    ]
+    ])
     report_text = "\n".join(lines)
 
     # Invariant 4 Sanitization Filters:

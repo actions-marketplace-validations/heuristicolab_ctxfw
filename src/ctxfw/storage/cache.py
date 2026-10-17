@@ -1,16 +1,19 @@
 """
-src/ctxfw/storage/cache.py — Persistent SQLite WAL Cache with XDG Resolution (v4.0.0-dev)
+src/ctxfw/storage/cache.py — Persistent SQLite WAL Cache with XDG Resolution (v4.0.0)
 manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
+manifest_hash_v41_multirepo: 73a24a0ac04e9142a8ce9684758e0e947583f8bb96d8884503482686d6aba6e5
 
 Isolates storage paths into standard OS-specific directories (%LOCALAPPDATA%, ~/.cache, etc.)
 while preserving hermetic override capabilities (e.g. :memory: or custom paths for testing).
-Now includes dedicated D3 symbol cartography B-Tree index with batch transaction optimizations.
+Includes dedicated D3 symbol cartography B-Tree index with workspace-scoped isolation
+and per-repository FinOps attribution.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -18,6 +21,64 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ctxfw.core.contracts import OptimizationResultDTO, PruningDepth
+
+_WORKSPACE_ROOT_MARKERS = (
+    ".git",
+    "pyproject.toml",
+    "package.json",
+    "go.mod",
+    "Cargo.toml",
+    "SPEC.axioms.md",
+    ".cursorrules",
+    "CLAUDE.md",
+)
+
+
+def resolve_project_identity(path: Optional[str | Path] = None) -> Tuple[str, str]:
+    """
+    Deterministically resolves (project_id, project_name) from a file or directory path.
+    Walks up parent directories to locate the workspace root (.git, pyproject.toml, etc.),
+    stopping strictly before the user home directory or filesystem root so global ~/CLAUDE.md
+    files never misattribute repositories to the OS username.
+    Returns ('REPO-0000000000000000', 'global') when path is None or unresolvable.
+    """
+    if path is None:
+        return ("REPO-0000000000000000", "global")
+    try:
+        raw_str = str(path).strip()
+        if not raw_str:
+            return ("REPO-0000000000000000", "global")
+        resolved = Path(raw_str).resolve()
+        start_dir = resolved.parent if (resolved.is_file() or resolved.suffix) else resolved
+
+        try:
+            home_dir = Path.home().resolve()
+        except Exception:
+            home_dir = None
+
+        workspace_root = start_dir
+        cur = start_dir
+        for _ in range(12):
+            if home_dir is not None and cur == home_dir:
+                break
+            if cur.parent == cur:
+                break
+            if any((cur / marker).exists() for marker in _WORKSPACE_ROOT_MARKERS):
+                workspace_root = cur
+                break
+            cur = cur.parent
+
+        if home_dir is not None and workspace_root == home_dir:
+            return ("REPO-0000000000000000", "global")
+
+        posix_root = workspace_root.as_posix().lower()
+        digest16 = hashlib.sha256(posix_root.encode("utf-8")).hexdigest()[:16]
+        project_id = f"REPO-{digest16}"
+        raw_name = workspace_root.name or "workspace"
+        project_name = re.sub(r"[^A-Za-z0-9._-]", "-", raw_name)[:64].strip("-") or "workspace"
+        return (project_id, project_name)
+    except Exception:
+        return ("REPO-0000000000000000", "global")
 
 
 def get_canonical_cache_path() -> Path:
@@ -35,7 +96,7 @@ def get_canonical_cache_path() -> Path:
 
 
 class LocalSemanticCache:
-    """Embedded transactional cache backed by SQLite WAL with XDG path resolution."""
+    """Embedded transactional cache backed by SQLite WAL with XDG path resolution and multi-repo isolation."""
 
     def __init__(self, db_path: Optional[str | Path] = None):
         if db_path is None:
@@ -89,9 +150,23 @@ class LocalSemanticCache:
                 pruned_chars INTEGER NOT NULL,
                 estimated_tokens_saved INTEGER NOT NULL,
                 savings_percentage REAL NOT NULL,
+                project_id TEXT NOT NULL DEFAULT 'REPO-0000000000000000',
+                project_name TEXT NOT NULL DEFAULT 'global',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(tokens_cache);").fetchall()}
+        if "project_id" not in existing_cols:
+            conn.execute(
+                "ALTER TABLE tokens_cache ADD COLUMN project_id TEXT NOT NULL DEFAULT 'REPO-0000000000000000';"
+            )
+        if "project_name" not in existing_cols:
+            conn.execute(
+                "ALTER TABLE tokens_cache ADD COLUMN project_name TEXT NOT NULL DEFAULT 'global';"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tokens_cache_project ON tokens_cache(project_name);"
+        )
         conn.execute("""
             CREATE TABLE IF NOT EXISTS d3_symbol_index (
                 module_rel_path TEXT PRIMARY KEY,
@@ -145,14 +220,53 @@ class LocalSemanticCache:
         self._l1_cache[cache_key] = dto
         return dto
 
-    def set(self, cache_key: str, result: OptimizationResultDTO):
+    def attribute_project(self, cache_key: str, project_root: Optional[str | Path] = None) -> None:
+        """
+        Associates an existing cached entry with its active project_id and project_name
+        when the entry was previously stored under the unscoped 'global' bucket.
+        """
+        if project_root is None:
+            return
+        project_id, project_name = resolve_project_identity(project_root)
+        if project_name == "global":
+            return
+        try:
+            with self._get_connection() as conn:
+                conn.execute(
+                    """
+                    UPDATE tokens_cache
+                    SET project_id = ?, project_name = ?
+                    WHERE cache_key = ? AND (project_name = 'global' OR project_name = '')
+                    """,
+                    (project_id, project_name, cache_key),
+                )
+        except Exception:
+            pass
+
+    def set(
+        self,
+        cache_key: str,
+        result: OptimizationResultDTO,
+        project_root: Optional[str | Path] = None,
+    ):
         self._l1_cache[cache_key] = result.model_copy(update={"cache_hit": True})
         depth_val = result.depth.value if hasattr(result.depth, "value") else str(result.depth)
+        project_id, project_name = resolve_project_identity(project_root)
+
         with self._get_connection() as conn:
+            if project_name == "global":
+                cur = conn.execute(
+                    "SELECT project_id, project_name FROM tokens_cache WHERE cache_key = ?",
+                    (cache_key,),
+                )
+                existing = cur.fetchone()
+                if existing and existing[1] and existing[1] != "global":
+                    project_id, project_name = existing[0], existing[1]
+
             conn.execute("""
                 INSERT OR REPLACE INTO tokens_cache 
-                (cache_key, pruned_code, pruning_depth, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (cache_key, pruned_code, pruning_depth, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage, project_id, project_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cache_key,
                 result.pruned_code,
@@ -161,47 +275,66 @@ class LocalSemanticCache:
                 result.pruned_chars,
                 result.estimated_tokens_saved,
                 result.savings_percentage,
+                project_id,
+                project_name,
             ))
+
+    @staticmethod
+    def _d3_scoped_key(rel_path: str, project_root: Optional[str | Path]) -> str:
+        if project_root is None:
+            return rel_path
+        project_id, _ = resolve_project_identity(project_root)
+        if project_id == "REPO-0000000000000000":
+            return rel_path
+        return f"{project_id}::{rel_path}"
 
     def get_d3_symbols_batch(
         self,
         module_rel_paths: List[str],
+        project_root: Optional[str | Path] = None,
     ) -> Dict[str, Tuple[float, str, List[str]]]:
         """
         Retrieves cached D3 symbol indices in a single batch query.
+        When project_root is provided, keys are isolated by deterministic project_id
+        so identical relative paths across different repositories never collide.
         Returns dict: module_rel_path -> (mtime, sha256, symbols_list)
         """
         if not module_rel_paths:
             return {}
 
         results: Dict[str, Tuple[float, str, List[str]]] = {}
-        missing: List[str] = []
-        for p in module_rel_paths:
-            if p in self._d3_l1_cache:
-                results[p] = self._d3_l1_cache[p]
-            else:
-                missing.append(p)
+        missing_scoped: List[str] = []
+        scoped_to_rel: Dict[str, str] = {}
 
-        if not missing:
+        for p in module_rel_paths:
+            scoped = self._d3_scoped_key(p, project_root)
+            scoped_to_rel[scoped] = p
+            if scoped in self._d3_l1_cache:
+                results[p] = self._d3_l1_cache[scoped]
+            else:
+                missing_scoped.append(scoped)
+
+        if not missing_scoped:
             return results
 
         conn = self._get_connection()
-        placeholders = ",".join("?" for _ in missing)
+        placeholders = ",".join("?" for _ in missing_scoped)
         sql = f"""
             SELECT module_rel_path, mtime, sha256, symbols_json
             FROM d3_symbol_index
             WHERE module_rel_path IN ({placeholders})
         """
         cur = conn.cursor()
-        cur.execute(sql, tuple(missing))
+        cur.execute(sql, tuple(missing_scoped))
         for row in cur.fetchall():
-            mod, mtime, hsh, syms_json = row
+            scoped_key, mtime, hsh, syms_json = row
+            orig_rel = scoped_to_rel.get(scoped_key, scoped_key)
             try:
                 symbols = json.loads(syms_json)
                 if isinstance(symbols, list):
                     entry = (float(mtime), str(hsh), symbols)
-                    results[mod] = entry
-                    self._d3_l1_cache[mod] = entry
+                    results[orig_rel] = entry
+                    self._d3_l1_cache[scoped_key] = entry
             except Exception:
                 continue
         return results
@@ -209,6 +342,7 @@ class LocalSemanticCache:
     def set_d3_symbols_batch(
         self,
         records: List[Tuple[str, str, float, List[str]]],
+        project_root: Optional[str | Path] = None,
     ):
         """
         Persists a batch of D3 module symbols into SQLite WAL in a single atomic transaction.
@@ -217,19 +351,19 @@ class LocalSemanticCache:
         if not records:
             return
 
+        payloads = []
         for mod, hsh, mtime, syms in records:
-            self._d3_l1_cache[mod] = (float(mtime), str(hsh), list(syms))
-
-        payloads = [
-            (
-                mod,
-                hsh,
-                mtime,
-                json.dumps(syms),
-                len(syms),
+            scoped = self._d3_scoped_key(mod, project_root)
+            self._d3_l1_cache[scoped] = (float(mtime), str(hsh), list(syms))
+            payloads.append(
+                (
+                    scoped,
+                    hsh,
+                    mtime,
+                    json.dumps(syms),
+                    len(syms),
+                )
             )
-            for mod, hsh, mtime, syms in records
-        ]
         conn = self._get_connection()
         conn.executemany("""
             INSERT OR REPLACE INTO d3_symbol_index
@@ -237,4 +371,5 @@ class LocalSemanticCache:
             VALUES (?, ?, ?, ?, ?)
         """, payloads)
         conn.commit()
+
 
