@@ -1,0 +1,17 @@
+# manifest_hash: f09d9e31251ef9ce9fc2c476b44c88cef35607497674e6841818ced0f6e7ca93
+# Smithery.ai MCP Server Configuration for CTXFW (Context Firewall)
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+    additionalProperties: false
+  commandFunction:
+    |-
+    (config) => ({
+      command: 'uvx',
+      args: ['--from', 'ctxfw', 'python', '-m', 'ctxfw.mcp'],
+      env: {
+        PYTHONUNBUFFERED: '1'
+      }
+    })

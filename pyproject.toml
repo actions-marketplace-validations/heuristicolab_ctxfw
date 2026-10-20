@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ctxfw"
 version = "4.1.0"
-description = "Deterministic Context Firewall & AST Ambient Pruner for AI Coding Agents"
+description = "AI Agent Governance, Prompt Injection Firewall (SARA) & Deterministic AST Context Compactor for MCP Coding Agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -48,6 +48,8 @@ include = [
     "/pyproject.toml",
     "/.gitattributes",
     "/glama.json",
+    "/smithery.yaml",
+    "/server.json",
     "/SPEC.axioms.md"
 ]
 exclude = [
