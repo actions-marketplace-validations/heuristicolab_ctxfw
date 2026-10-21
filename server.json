@@ -1,8 +1,7 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
-  "_manifest_hash": "f09d9e31251ef9ce9fc2c476b44c88cef35607497674e6841818ced0f6e7ca93",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.heuristicolab/ctxfw",
-  "description": "AI Agent Governance, Prompt Injection Firewall (SARA) & In-Memory Tree-Sitter AST Context Compactor for MCP Coding Agents (Zero-Egress).",
+  "description": "Zero-egress AI Agent Firewall: SARA prompt injection defense, deterministic AST context pruning & MCP governance.",
   "repository": {
     "url": "https://github.com/heuristicolab/ctxfw",
     "source": "github"
@@ -10,14 +9,13 @@
   "version": "4.1.0",
   "packages": [
     {
-      "registry_type": "pypi",
+      "registryType": "pypi",
       "identifier": "ctxfw",
       "version": "4.1.0",
-      "runtime_hint": "uvx",
       "transport": {
         "type": "stdio"
       },
-      "package_arguments": [
+      "packageArguments": [
         {
           "type": "positional",
           "value": "mcp"

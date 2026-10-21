@@ -1,8 +1,9 @@
 # manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 """
-src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v4.0.0)
+src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v4.1.0)
 manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
+manifest_hash_v41_dante: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
 Exposes deterministic context pruning, topological bundle resolution,
 axiomatic spec evaluation, SWE-Gate patch verification, and audit ledger querying
 to AI agents (Cursor, Claude Code, Windsurf) using JSON-RPC 2.0.
@@ -75,6 +76,7 @@ class MCPServer:
         self._tracekit_store = tracekit_store
         self._rules_store = rules_store
         self._tokencast_store = tokencast_store
+        self._uses_canonical_tokencast = tokencast_store is None
         self._sara_store = sara_store
         self._sara_policy = sara_policy
         self._swegate_store = swegate_store
@@ -391,6 +393,29 @@ class MCPServer:
                 try:
                     sys.stderr.write(f"[TraceKit Shadow Error] Append rejected [{outcome.failure_class}]: {outcome.reason}\n")
                     sys.stderr.flush()
+                except Exception:
+                    pass
+
+            if self._uses_canonical_tokencast:
+                try:
+                    from ctxfw.budget.contracts import SessionTokenBudgetDTO
+
+                    tc_store = self._get_tokencast_store()
+                    tc_sess = f"SES-tc-{str(session_id)[4:48]}"
+                    if tc_store.get_session_budget(tc_sess) is None:
+                        tc_store.create_session_budget(
+                            SessionTokenBudgetDTO(
+                                session_id=tc_sess,
+                                soft_limit_tokens=200000,
+                                hard_limit_tokens=500000,
+                                max_turns=1000,
+                            )
+                        )
+                    turns = tc_store.get_turn_telemetry(tc_sess)
+                    next_turn = len(turns)
+                    if next_turn < 1000:
+                        est_tokens = max(1, min(200000, len(payload_str) // 4))
+                        tc_store.record_turn_telemetry(tc_sess, next_turn, est_tokens, 0)
                 except Exception:
                     pass
         except Exception as exc:

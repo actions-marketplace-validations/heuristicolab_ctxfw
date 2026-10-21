@@ -88,11 +88,16 @@ While cloud runtime firewalls (**Lakera Guard**, **Palo Alto Networks Prisma AIR
 | :--- | :--- | :--- | :--- | :--- |
 | **Enforcement Boundary** | **Pre-Ingestion Local AST & MCP Tool `stdio` / Proxy** | Cloud HTTP Prompt API | Cloud Network & Runtime API | Cloud Edge / ML Inference Proxy |
 | **Code & Data Sovereignty** | **100% Zero-Egress (Air-Gapped Local RAM & SQLite WAL)** | Requires Cloud API Egress | Cloud / Appliance Inspection | Cloud Proxy Egress |
-| **Indirect Prompt Injection (`MCP` / Tools)** | **Deterministic `ctxfw.sara`** (`<system>`, `[INST]`, Trojan-Source Unicode bidi `U+202E` quarantine) | Probabilistic ML Classifier | Runtime Network Policy | Edge WAF / Heuristic Classifier |
+| **Indirect Prompt Injection (`MCP` / Tools)** | **Deterministic `ctxfw.sara`**: **100.0% Recall / 0.0% FPR** (`<system>`, `[INST]`, Trojan-Source `U+202E` quarantine) | Probabilistic ML Classifier | Runtime Network Policy | Edge WAF / Heuristic Classifier |
 | **FinOps Token Cost Reduction** | **42.96% – 90.26% $D_1$ AST Bloat Pruned** (~**$87.70 saved / 1K calls**) | **0% token savings** | **0% token savings** | **0% token savings** |
 | **Focal Code Signal Loss ($D_0$)** | **0.00% Loss (`AXIOM-3`: 100% byte-for-byte $D_0$ preservation)** | N/A (Pass-through) | N/A (Pass-through) | N/A (Pass-through) |
-| **Inspection Latency** | **< 0.8 ms (Warm WAL Cache) / < 5.0 ms Engine** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` | `15 ms – 150 ms` |
+| **Inspection Latency (P50 / P95)** | **0.33 ms P50 / 1.72 ms P95 (SARA) · < 0.8 ms (Warm WAL Cache)** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` | `15 ms – 150 ms` |
 | **Deployment Complexity** | **1 Command (< 10s)**: `pipx install ctxfw && ctxfw init` | SDK wrapper + API keys | TLS decryption + routing | DNS / Proxy routing |
+
+Run the reproducible 24-vector OWASP AISVS `C02-01` & `arXiv:2510.05244v2` Indirect Prompt Injection & Trojan-Source benchmark locally with zero network egress:
+```bash
+python benchmarks/run_sara_security_benchmark.py
+```
 
 ---
 
@@ -152,7 +157,6 @@ CTXFW is independently audited and certified with **Grade A** compliance across 
 - **GTMStacker Tool Registry**: [`gtmstacker.com/registry/tool/ctxfw/index.json`](https://gtmstacker.com/registry/tool/ctxfw/index.json)
 - **VibeLeaderboard**: [`vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677`](https://www.vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677)
 - **Official Anthropic MCP Registry (`server.json`)**: [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
-- **Smithery.ai MCP Registry (`smithery.yaml`)**: [`smithery.ai/search?q=ctxfw`](https://smithery.ai/search?q=ctxfw)
 - **PulseMCP Directory**: [`pulsemcp.com/servers?q=ctxfw`](https://www.pulsemcp.com/servers?q=ctxfw)
 
 Install the verified Claude Code / Agent skills directly into `.claude/skills/`:
@@ -179,19 +183,20 @@ ctxfw doctor
 ========================================================================
   CTXFW DOCTOR // HIGH-ASSURANCE HEALTH & ISOLATION DIAGNOSTIC
 ========================================================================
-[PASS]   Python Package & sys.path        ctxfw v4.0.0 loaded cleanly.
+[PASS]   Python Package & sys.path        ctxfw v4.1.0 loaded cleanly.
 [PASS]   MCP stdio Stream Isolation       100% pure JSON-RPC on stdout. Diagnostic logs isolated to stderr.
 [PASS]   Global CLI Executable (PATH)     Binary 'ctxfw' found in PATH.
 [PASS]   Axiomatic Sieve Engine           Evaluation verified (ACI: 1.0000, Invariants: 5).
 [PASS]   SQLite WAL Cache & Concurrency   Journal mode: WAL, Busy timeout: 5000ms.
 [PASS]   Polyglot Tree-Sitter Grammars    Initialized language parsers (typescript, go, java).
-[PASS]   TraceKit Ledger Audit            Chain status: INTACT. Anchor hash: 57372398d453b7e4...
+[PASS]   TraceKit Ledger Audit            Chain status: INTACT (1275 blocks).
+[PASS]   Sovereign Pentad WAL Ledgers     SARA scans: 331 | TokenCast turns: 1 (FinOps rows: 3872) | Rules: 1056 | SWE-Gate: 13.
 ------------------------------------------------------------------------
 Overall Verdict:            [HEALTHY] [ATTESTED] Perimeter defense operational.
 ========================================================================
 CTXFW // 72.4% AST Bloat Eliminated. Zero Telemetry Egress.
-Need team-wide budget circuit breakers or multi-node proxy governance?
-Control Plane & Enterprise Licensing: https://ctxfw.heuristicolab.com
+Export FinOps ROI: 'ctxfw report --share' | CI Merge Gate: 'ctxfw gate'
+Team Squad ($199/mo flat up to 15 devs): https://ctxfw.heuristicolab.com/pricing/
 ========================================================================
 ```
 
@@ -234,7 +239,7 @@ PROBABILISTIC DOMAIN                      DETERMINISTIC PERIMETER
                                            [ & Git Permitted ]   [ Pre-Commit Abort]
 ```
 
-### Key Subsystems (v4.0.0 Sovereign Pentad):
+### Key Subsystems (v4.1.0 Sovereign Pentad):
 1. **Polyglot Tree-Sitter Pruner & $D_3$ Ambient Cartography**:
    - Compiles topological dependency trees ($D_0$ full, $D_1$ interface, $D_2$ nominal, $D_3$ flat symbol catalog $\le 1,000$ tokens) across **Python**, **TypeScript/JavaScript**, **Go**, and **Java**.
 2. **TraceKit Cryptographic Ledger (`ctxfw.audit`)**:
@@ -268,18 +273,35 @@ Deploys `.git/hooks/pre-commit` to prevent uncertified code commits lacking an a
 
 ---
 
-## Enterprise Governance
+## Enterprise Governance & CI/CD Gate (`v4.1.0`)
 
-For distributed engineering teams requiring centralized policy controls:
-- **Team-wide LLM budget circuit breakers**: Hard token and dollar thresholds with automatic killswitches.
-- **Multi-node reverse proxy governance**: Centralized firewall gateways supporting OpenAI and Anthropic streaming SSE endpoints.
-- **FinOps Telemetry Ledger**: Aggregate tokens saved, cost elusion analytics, and tamper-evident audit trails.
+For engineering squads requiring FinOps consolidation and automated Pull Request governance:
+- **Individual Developer FinOps & LiveBench 2.0 Arbitrage (Free / Apache 2.0)**:
+  ```bash
+  ctxfw report --share
+  ctxfw report --export-json ./my-ledger.json
+  ```
+- **Team Governance & SWE-Gate CI (`$199 USD/month Flat Squad` — up to 15 developers & 5 CI/CD repositories, includes 7-Day Trial)**:
+  ```bash
+  export CTXFW_LICENSE_KEY="CTXFW-TEAM-PRO-..."
+  ctxfw license status
+  ctxfw gate --diff-file pr.patch --github-summary
+  ctxfw report --team-merge ./team-ledgers/
+  ```
+- **Official GitHub Action (`action.yml`)**:
+  ```yaml
+  - name: CTXFW SWE-Gate & FinOps PR Audit
+    uses: heuristicolab/ctxfw@v4
+    with:
+      license-key: ${{ secrets.CTXFW_LICENSE_KEY }}
+      diff-range: "origin/main...HEAD"
+  ```
 
-**Control Plane & Enterprise Licensing:** [https://ctxfw.heuristicolab.com](https://ctxfw.heuristicolab.com)
+**Control Plane, 7-Day Trial & Team Squad Licensing:** [https://ctxfw.heuristicolab.com/pricing/](https://ctxfw.heuristicolab.com/pricing/)
 
 ---
 
 <div align="center">
-<sub>ENGINEERED BY HEURISTICO LAB // SKUNK WORKS DIVISION</sub><br>
-<sub>HIGH-ASSURANCE DEFENSE SYSTEMS GROUP</sub>
+<sub>ENGINEERED BY HEURISTICO LAB</sub><br>
+<sub>HIGH-ASSURANCE SYSTEMS GROUP</sub>
 </div>

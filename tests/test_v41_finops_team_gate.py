@@ -347,3 +347,29 @@ def test_ctxfw_gate_cli_allow_and_fail_closed_reject(tmp_path: Path, monkeypatch
         ]
     )
     assert rc_failed_tests == 1
+
+
+def test_dante_sara_benchmark_action_and_pentad_wal() -> None:
+    """Verifies the reproducible 24-vector SARA prompt-injection benchmark, GitHub Action manifest, and Pentad WAL check."""
+    from benchmarks.run_sara_security_benchmark import run_benchmark
+    from ctxfw.installer import run_doctor
+
+    summary = run_benchmark(persist_to_canonical_sara=False)
+    assert summary["corpus_size"] == 24
+    assert summary["adversarial_vectors"] == 16
+    assert summary["benign_vectors"] == 8
+    assert summary["recall_pct"] == 100.0
+    assert summary["false_positive_rate_pct"] == 0.0
+    assert summary["network_egress_calls"] == 0
+
+    action_yml = Path(__file__).resolve().parents[1] / "action.yml"
+    assert action_yml.is_file()
+    action_text = action_yml.read_text(encoding="utf-8")
+    assert "CTXFW_LICENSE_KEY" in action_text
+    assert "ctxfw gate" in action_text
+
+    doc_report = run_doctor()
+    check_names = {c.name: c for c in doc_report.checks}
+    assert "Sovereign Pentad WAL Ledgers" in check_names
+    assert check_names["Sovereign Pentad WAL Ledgers"].status == "OK"
+
