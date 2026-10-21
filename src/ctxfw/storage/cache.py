@@ -1,5 +1,5 @@
 """
-src/ctxfw/storage/cache.py — Persistent SQLite WAL Cache with XDG Resolution (v4.0.0)
+src/ctxfw/storage/cache.py — Persistent SQLite WAL Cache with XDG Resolution (v4.1.0)
 manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
 manifest_hash_v41_multirepo: 73a24a0ac04e9142a8ce9684758e0e947583f8bb96d8884503482686d6aba6e5
 

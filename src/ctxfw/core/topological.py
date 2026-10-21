@@ -1,6 +1,7 @@
 # manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
+# manifest_hash_v41: c4a9e57cc11c29f1ab117e278bf71ddbcec97bf885c4973034a230b49821bc24
 """
-src/ctxfw/core/topological.py — Topological Dependency Graph & Context Firewall Engine (v4.0.0-dev)
+src/ctxfw/core/topological.py — Topological Dependency Graph & Context Firewall Engine (v4.1.0)
 manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 
 Resolves internal project call graphs, assigns semantic distances (D0, D1, D2, D3),

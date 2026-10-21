@@ -6,7 +6,7 @@
 [![PyPI - Version](https://img.shields.io/badge/PyPI-v4.1.0-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
 [![PyPI - Downloads](https://img.shields.io/pepy/dt/ctxfw?style=for-the-badge&logo=pypi&logoColor=white&color=007ec6)](https://pepy.tech/project/ctxfw)
 [![Axiomatic Completeness Index](https://img.shields.io/badge/ACI-1.0000_VERIFIED-000000?style=for-the-badge&logo=shield)](https://ctxfw.heuristicolab.com)
-[![Tests](https://img.shields.io/badge/TESTS-471%2F471_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
+[![Tests](https://img.shields.io/badge/TESTS-472%2F472_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
@@ -110,7 +110,7 @@ pip install --upgrade ctxfw
 pipx install ctxfw
 ```
 
-### 2. Multi-Surface MCP Auto-Configuration (v4.0.0)
+### 2. Multi-Surface MCP Auto-Configuration (v4.1.0)
 Run `ctxfw init` or dedicated installation command `ctxfw install --claude` for automated zero-touch discovery and idempotent injection across your installed coding surfaces:
 ```bash
 # Targeted Claude Code CLI & Claude Desktop auto-installation:

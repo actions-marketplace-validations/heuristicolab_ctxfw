@@ -1,6 +1,6 @@
 # manifest_hash: 990875d35d51a816507954d5e1a61506dcd2b5ec7d40d515a65c4ee5ac325f5f
 """
-src/ctxfw/cli/__init__.py — Unified Command Line Interface Package (v4.0.0)
+src/ctxfw/cli/__init__.py — Unified Command Line Interface Package (v4.1.0)
 Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
 """
 from __future__ import annotations

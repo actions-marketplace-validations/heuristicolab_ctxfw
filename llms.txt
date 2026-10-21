@@ -22,8 +22,8 @@ CTXFW (Context Firewall) is an air-gapped, deterministic AST pruning firewall, M
 
 ## Releases & Version History
 - **Current Canonical Version:** `v4.1.0`
-- **Release Dossier:** [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md) | Prior: [`docs/RELEASE_NOTES_v3.9.1.md`](docs/RELEASE_NOTES_v3.9.1.md) | [`docs/RELEASE_NOTES_v3.9.0.md`](docs/RELEASE_NOTES_v3.9.0.md) | [`docs/RELEASE_NOTES_v3.8.0.md`](docs/RELEASE_NOTES_v3.8.0.md)
-  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), LiveBench 2.0 FinOps model matrix, 4.2x multi-turn compounding, `ctxfw gate` CLI, tamper-evident `--team-merge`, 471/471 verified tests, and ACI 1.0000 cryptographic attestation seal.
+- **Release Dossier:** [`docs/RELEASE_NOTES_v4.1.0.md`](docs/RELEASE_NOTES_v4.1.0.md) | Prior: [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md) | [`docs/RELEASE_NOTES_v3.9.1.md`](docs/RELEASE_NOTES_v3.9.1.md) | [`docs/RELEASE_NOTES_v3.9.0.md`](docs/RELEASE_NOTES_v3.9.0.md) | [`docs/RELEASE_NOTES_v3.8.0.md`](docs/RELEASE_NOTES_v3.8.0.md)
+  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), LiveBench 2.0 FinOps model matrix, 4.2x multi-turn compounding, `ctxfw gate` CLI, tamper-evident `--team-merge`, 24-vector OWASP AISVS benchmark, 472/472 verified tests, and ACI 1.0000 cryptographic attestation seal.
 
 ## Interoperability & Integration Endpoints
 - **Native MCP Stdio Engine:**
