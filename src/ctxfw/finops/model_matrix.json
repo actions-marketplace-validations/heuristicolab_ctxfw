@@ -1,0 +1,227 @@
+{
+  "schema_version": "2.0.0",
+  "updated_at": "2026-10-17",
+  "default_model": "claude-fable-5-1",
+  "default_compounding_factor": 4.2,
+  "models": {
+    "claude-fable-5-1": {
+      "provider": "anthropic",
+      "display_name": "Claude Fable 5.1",
+      "aliases": [
+        "claude-fable-5.1",
+        "claude-fable-5",
+        "fable-5.1",
+        "fable-5",
+        "fable"
+      ],
+      "input_price_per_m": 10.00,
+      "output_price_per_m": 50.00,
+      "cache_write_price_per_m": 12.50,
+      "cache_read_price_per_m": 1.00,
+      "context_window": 500000,
+      "livebench_coding_score": 97.7,
+      "livebench_agentic_score": 88.0,
+      "arbitrage_target": "claude-opus-5-5"
+    },
+    "gpt-6-astra": {
+      "provider": "openai",
+      "display_name": "GPT-6 Astra",
+      "aliases": [
+        "gpt-6-astra-2026",
+        "gpt-6",
+        "astra"
+      ],
+      "input_price_per_m": 10.00,
+      "output_price_per_m": 50.00,
+      "cache_write_price_per_m": 10.00,
+      "cache_read_price_per_m": 1.00,
+      "context_window": 1000000,
+      "livebench_coding_score": 93.7,
+      "livebench_agentic_score": 86.1,
+      "arbitrage_target": "gpt-6-1-sol"
+    },
+    "claude-opus-5-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Opus 5.5",
+      "aliases": [
+        "claude-opus-5.5",
+        "claude-opus-5",
+        "opus-5.5",
+        "opus-5"
+      ],
+      "input_price_per_m": 4.00,
+      "output_price_per_m": 20.00,
+      "cache_write_price_per_m": 5.00,
+      "cache_read_price_per_m": 0.40,
+      "context_window": 500000,
+      "livebench_coding_score": 96.3,
+      "livebench_agentic_score": 86.5,
+      "arbitrage_target": "claude-sonnet-5-5"
+    },
+    "gpt-6-1-sol": {
+      "provider": "openai",
+      "display_name": "GPT-6.1 Sol",
+      "aliases": [
+        "gpt-6.1-sol",
+        "gpt-6-sol",
+        "gpt-5.6-sol",
+        "gpt-5-6-sol",
+        "gpt-5.4",
+        "sol"
+      ],
+      "input_price_per_m": 2.00,
+      "output_price_per_m": 10.00,
+      "cache_write_price_per_m": 2.00,
+      "cache_read_price_per_m": 0.20,
+      "context_window": 1000000,
+      "livebench_coding_score": 96.0,
+      "livebench_agentic_score": 85.4,
+      "arbitrage_target": "gemini-3-8-flash"
+    },
+    "claude-sonnet-5-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 5.5",
+      "aliases": [
+        "claude-sonnet-5.5",
+        "claude-sonnet-5",
+        "sonnet-5.5",
+        "sonnet-5"
+      ],
+      "input_price_per_m": 2.00,
+      "output_price_per_m": 10.00,
+      "cache_write_price_per_m": 2.50,
+      "cache_read_price_per_m": 0.20,
+      "context_window": 500000,
+      "livebench_coding_score": 94.7,
+      "livebench_agentic_score": 82.5,
+      "arbitrage_target": "gemini-3-8-flash"
+    },
+    "gemini-4-argon": {
+      "provider": "google",
+      "display_name": "Gemini 4 Argon",
+      "aliases": [
+        "gemini-4-argon-pro",
+        "gemini-3.1-pro",
+        "gemini-3-1-pro",
+        "argon"
+      ],
+      "input_price_per_m": 2.00,
+      "output_price_per_m": 10.00,
+      "cache_write_price_per_m": 2.00,
+      "cache_read_price_per_m": 0.20,
+      "context_window": 2000000,
+      "livebench_coding_score": 89.7,
+      "livebench_agentic_score": 84.1,
+      "arbitrage_target": "gemini-3-8-flash"
+    },
+    "gemini-3-8-flash": {
+      "provider": "google",
+      "display_name": "Gemini 3.8 Flash",
+      "aliases": [
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-flash"
+      ],
+      "input_price_per_m": 0.75,
+      "output_price_per_m": 3.75,
+      "cache_write_price_per_m": 0.75,
+      "cache_read_price_per_m": 0.075,
+      "context_window": 2000000,
+      "livebench_coding_score": 84.5,
+      "livebench_agentic_score": 79.2,
+      "arbitrage_target": "gpt-6-luna"
+    },
+    "gpt-6-luna": {
+      "provider": "openai",
+      "display_name": "GPT-6 Luna / Haiku 5.5",
+      "aliases": [
+        "gpt-5.6-luna",
+        "luna",
+        "claude-haiku-5-5",
+        "claude-haiku-5.5"
+      ],
+      "input_price_per_m": 0.20,
+      "output_price_per_m": 1.20,
+      "cache_write_price_per_m": 0.20,
+      "cache_read_price_per_m": 0.02,
+      "context_window": 500000,
+      "livebench_coding_score": 78.4,
+      "livebench_agentic_score": 74.0,
+      "arbitrage_target": null
+    },
+    "claude-opus-4-20250514": {
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4",
+      "aliases": [
+        "claude-opus-4",
+        "claude-3-opus",
+        "claude-3-opus-20240229",
+        "opus",
+        "opus-4"
+      ],
+      "input_price_per_m": 15.00,
+      "output_price_per_m": 75.00,
+      "cache_write_price_per_m": 18.75,
+      "cache_read_price_per_m": 1.50,
+      "context_window": 200000,
+      "livebench_coding_score": 82.4,
+      "livebench_agentic_score": 84.1,
+      "arbitrage_target": "claude-sonnet-4-20250514"
+    },
+    "claude-sonnet-4-20250514": {
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 4",
+      "aliases": [
+        "claude-sonnet-4",
+        "claude-3-7-sonnet",
+        "claude-3-7-sonnet-20250219",
+        "claude-3-5-sonnet",
+        "claude-3-5-sonnet-20241022",
+        "sonnet",
+        "sonnet-4"
+      ],
+      "input_price_per_m": 3.00,
+      "output_price_per_m": 15.00,
+      "cache_write_price_per_m": 3.75,
+      "cache_read_price_per_m": 0.30,
+      "context_window": 200000,
+      "livebench_coding_score": 80.1,
+      "livebench_agentic_score": 81.5,
+      "arbitrage_target": "gemini-3-8-flash"
+    },
+    "gpt-4.1": {
+      "provider": "openai",
+      "display_name": "GPT-4.1",
+      "aliases": [
+        "gpt-4.1-2025-04-14",
+        "gpt-4o",
+        "gpt-4o-2024-11-20"
+      ],
+      "input_price_per_m": 2.00,
+      "output_price_per_m": 8.00,
+      "cache_write_price_per_m": 2.00,
+      "cache_read_price_per_m": 0.50,
+      "context_window": 1000000,
+      "livebench_coding_score": 78.6,
+      "livebench_agentic_score": 77.9,
+      "arbitrage_target": "gemini-3-8-flash"
+    },
+    "gemini-2.5-pro": {
+      "provider": "google",
+      "display_name": "Gemini 2.5 Pro",
+      "aliases": [
+        "gemini-2.5-pro-preview",
+        "gemini-1.5-pro",
+        "gemini-pro"
+      ],
+      "input_price_per_m": 1.25,
+      "output_price_per_m": 10.00,
+      "cache_write_price_per_m": 1.25,
+      "cache_read_price_per_m": 0.31,
+      "context_window": 1000000,
+      "livebench_coding_score": 79.4,
+      "livebench_agentic_score": 78.2,
+      "arbitrage_target": "gemini-3-8-flash"
+    }
+  }
+}

@@ -127,3 +127,43 @@ Formal error taxonomy isolating fault domains during D3 ambient resolution:
 - **AXIOM-20 (Configuration Depth Ceiling):** The configuration engine shall never parse or execute topological depth expansions strictly exceeding depth level 3 (D > 3), and shall reject malformed numeric depth values.
 - **AXIOM-21 (Zero Telemetry Leakage in Config):** The configuration loader shall never transmit .ctxfwrc contents, workspace paths, or environment variable overrides outside the local host runtime.
 
+## Appendix E: FinOps Model Matrix, LiveBench Arbitrage, Multi-Turn Compounding, CI Gate CLI & Team Merge (v4.1.0)
+<!-- Axiom Completeness Index (ACI): 1.0000 | Status: VERIFIED | Bounds: 6/6 -->
+<!-- Attestation Manifest Hash: b3416020008720d414d2328ed2b436a6f73c61c92b276e9650823ec51eecca5c -->
+
+### E.1 Domain Entities & Bounded Variables
+Deterministic runtime bounds governing the v4.1.0 FinOps, CI Gate CLI, and Team Merge subsystem:
+- Variable `input_price_per_m`: float bounded >= 0.01 and <= 200.00 USD per million input tokens.
+- Variable `output_price_per_m`: float bounded >= 0.01 and <= 500.00 USD per million output tokens.
+- Variable `compounding_factor`: float bounded >= 1.0 and <= 50.0 (default 4.2 realistic multi-turn session multiplier).
+- Variable `livebench_coding_score`: float bounded >= 0.0 and <= 100.0 benchmark points.
+- Variable `max_cyclomatic_delta`: integer bounded >= -1000 and <= 1000 decision points.
+- Variable `team_merge_max_files`: integer bounded >= 1 and <= 500 developer JSON manifests.
+Bounds: 6 / 6
+
+### E.2 Deterministic State Machine (FSM)
+Lifecycle states and transition map $\delta(S, E)$ governing FinOps resolution, CI gate verification, and team report consolidation:
+- States: `IDLE`, `CONFIG_RESOLVED`, `MODEL_MATRIX_LOADED`, `GATE_EVALUATED`, `REPORT_EXPORTED`, `TEAM_MERGED`, `REJECTED_INVALID`
+- State transition $\delta(\text{IDLE}, \text{LOAD\_MATRIX}) \to \text{MODEL\_MATRIX\_LOADED}$
+- State transition $\delta(\text{MODEL\_MATRIX\_LOADED}, \text{RESOLVE\_MODEL}) \to \text{CONFIG\_RESOLVED}$
+- State transition $\delta(\text{CONFIG\_RESOLVED}, \text{RUN\_GATE}) \to \text{GATE\_EVALUATED}$
+- State transition $\delta(\text{CONFIG\_RESOLVED}, \text{EXPORT\_JSON}) \to \text{REPORT\_EXPORTED}$
+- State transition $\delta(\text{REPORT\_EXPORTED}, \text{MERGE\_TEAM}) \to \text{TEAM\_MERGED}$
+- State transition $\delta(*, \text{VALIDATION\_ERROR}) \to \text{REJECTED\_INVALID}$
+- Terminal States: `GATE_EVALUATED`, `REPORT_EXPORTED`, `TEAM_MERGED`, `REJECTED_INVALID`
+
+### E.3 Error Taxonomy & Quarantine
+Formal error taxonomy isolating fault domains during FinOps matrix resolution, CI gate checks, and team report consolidation:
+- Class 1 (Transient Fault): SQLite WAL busy lock or network timeout during explicit `sync-models` -> Retry up to 3 times with exponential backoff or fallback to packaged local `model_matrix.json`.
+- Class 2 (Deterministic Input Fault): Unknown model identifier or malformed unified diff -> Fallback to default model pricing (`claude-sonnet-4-6` at $3.00/$15.00) or fail-closed `REJECTED_INVALID` in `ctxfw gate`.
+- Class 3 (Business & Specification Violation): Architectural regression in `ctxfw gate` (cyclomatic delta exceeded, `# type: ignore`, disallowed import, or failed tests) -> Exit code 1 and `REJECT_ARCHITECTURAL_VIOLATION`.
+- Class 4 (Security & Isolation Violation): Tampered `manifest_sha256` in `--team-merge` JSON or path traversal attempt -> Immediate rejection with exit code 1 and zero state mutation.
+
+### E.4 Negative Invariants (Floor of 5 Required)
+- The FinOps engine shall never initiate background network connections or transmit telemetry during normal CLI, MCP, or proxy execution; remote matrix synchronization shall only occur when the user explicitly invokes `ctxfw config sync-models`.
+- The proxy and reporting engine shall never hardcode a single static token price when a valid model identifier is present in the API request body, environment, or `.ctxfwrc` configuration.
+- The `ctxfw report --export-json` command shall never include raw source code, prompt text, environment variables, or local filesystem directory paths outside anonymized repository hashes.
+- The `ctxfw report --team-merge` command shall never aggregate or accept a developer report JSON file whose `manifest_sha256` cryptographic digest fails verification.
+- The `ctxfw gate` CLI command shall never return exit code 0 when `SweGateVerifier` detects an architectural violation, malformed diff, or failed functional test suite.
+- The model matrix loader shall never execute arbitrary code or parse non-JSON payloads when loading pricing specifications.
+- The multi-turn compounding calculator shall never produce negative, NaN, or infinite USD savings estimates.

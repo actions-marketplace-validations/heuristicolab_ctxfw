@@ -1,56 +1,89 @@
-<!-- manifest_hash: d7faafa9f4778840246212f483a520aed6d52526569a9a8b2303e3a5a3ab830e -->
-# Comparative Benchmark: CTXFW vs. Cloud AI Runtime Firewalls (Lakera Guard, Palo Alto Prisma AIRS, Protect AI, Cloudflare Firewall for AI)
+<!-- manifest_hash: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be -->
+# AI Agent Governance & Prompt Injection Firewalls: `CTXFW` vs. Cloud Runtime WAFs (`Lakera Guard`, `Palo Alto Prisma AIRS`, `Protect AI`, `Cloudflare Firewall for AI`)
 
-**Canonical Version:** `v4.0.1`  
-**Attestation Status:** `VERIFIED` (`ACI: 1.0000` · `467/467` Deterministic Test Suite)  
-**Target Domain:** AI Agent Governance, Indirect Prompt Injection Defense (`SARA`), & Pre-Ingestion AST Context Compaction (`MCP` & Local Proxy)
-
----
-
-## 1. Executive Architecture Distinction: Pre-Ingestion Local AST vs. Cloud HTTP Edge WAFs
-
-Enterprise AI security teams evaluating **Lakera Guard** (Check Point), **Palo Alto Networks Prisma AIRS**, **Protect AI Guardian**, or **Cloudflare Firewall for AI** face a structural gap when governing autonomous coding agents (**Claude Code**, **Cursor**, **Windsurf**, **Aider**, **GitHub Copilot**):
-
-1. **Cloud Runtime WAFs operate at the HTTP API edge** *after* proprietary source code, peripheral dependencies, and untrusted MCP tool outputs have already been serialized into the prompt and transmitted off-premise.
-2. **CTXFW (`Context Firewall`) operates at the Pre-Ingestion AST & MCP `stdio` boundary (`100% Zero-Egress`)** *before* any token leaves the developer workstation or CI/CD runner.
+**Canonical Version:** `ctxfw v4.1.0`  
+**Security Attestation:** Glama MCP Registry **Grade A (100/100 Security)** · Skills Directory **Grade A (100/100 across 120 static patterns)**  
+**Empirical Benchmark Dossiers:** [`docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md`](TRILOGY_EMPIRICAL_BENCHMARK.md) & [`benchmarks/run_sara_security_benchmark.py`](../../benchmarks/run_sara_security_benchmark.py)
 
 ---
 
-## 2. Head-to-Head Capability & Performance Matrix
+## 1. Executive Summary: The Pre-Ingestion AST/MCP Boundary vs. Cloud Runtime Proxies
 
-| Security & FinOps Dimension | **CTXFW (`v4.0.1` Sovereign Pentad)** | **Lakera Guard** (`Check Point`) | **Palo Alto Networks Prisma AIRS** | **Protect AI Guardian / Recon** | **Cloudflare Firewall for AI** |
+When enterprise CISOs, Staff Engineers, and AI Platform Architects evaluate **AI Agent Governance & Prompt Injection Firewalls**, the market divides into two distinct architectural layers that solve fundamentally different attack surfaces:
+
+1. **Cloud Runtime API Firewalls (`Lakera Guard`, `Palo Alto Networks Prisma AIRS`, `Protect AI Guardian`, `Cloudflare Firewall for AI`) & Foundation Model Guardrails (`OpenAI`, `Anthropic`, `Microsoft Azure OpenAI Service`)**:
+   - **What they protect:** HTTP/REST inference traffic between customer-facing chatbots and cloud LLM APIs.
+   - **How they work:** Probabilistic classifier models or cloud edge proxies inspecting assembled text prompts over the network.
+   - **Enterprise Limitation for Coding & MCP Agents:** Require transmitting proprietary source code and tool outputs to an external cloud inspection endpoint (**Network Egress**), add `30 ms – 250 ms` of network round-trip latency per call, and **save 0% of peripheral AST token bloat**.
+2. **Local Pre-Ingestion Context & MCP Firewall (`CTXFW // Context Firewall v4.1.0`)**:
+   - **What it protects:** Autonomous coding agents (`Claude Code`, `Cursor`, `Windsurf`, `Antigravity`, `Aider`) and Model Context Protocol (`MCP`) tool pipelines **before** context assembly leaves the developer workstation or air-gapped CI runner.
+   - **How it works:** Deterministic in-memory **Tree-Sitter AST/CST topological compaction** ($D_0 \to D_3$) combined with **`ctxfw.sara` (Sovereign Agent Induction Firewall)**, **`ctxfw.rules` (Normative Rules Enforcer)**, **`TokenCast` (FinOps Circuit Breaker)**, and **`TraceKit` (SHA-256 Hash-Chained Audit Ledger)**.
+   - **Enterprise Advantage:** **100% Zero-Egress** (runs strictly in local RAM / stdio / loopback), **0.33 ms median SARA inspection latency** (`437,351 tokens/sec` AST slicing throughput), and **cuts peripheral dependency token costs by 42.96% to 90.26%** while blocking indirect prompt injections and Trojan-Source bidi escapes deterministically.
+
+---
+
+## 2. Head-to-Head Architectural & Benchmark Matrix
+
+| Evaluation Dimension | **CTXFW (`Context Firewall v4.1.0`)** | **Lakera Guard** (`Check Point`) | **Palo Alto Networks Prisma AIRS** | **Protect AI Guardian / Rebuff** | **Cloudflare Firewall for AI** |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Primary Enforcement Layer** | **Local Pre-Ingestion AST & MCP `stdio` / Loopback Proxy** | Cloud HTTP Prompt API | Network & Cloud API Runtime | Model Artifact & Runtime API | Cloud Edge WAF Proxy |
-| **Data Residency & Egress** | **100% Zero-Egress (Air-Gapped RAM + Local SQLite WAL)** | Cloud API Egress Required | Cloud / Virtual Appliance | Cloud / VPC Deployment | Cloud Edge Egress |
-| **Indirect Prompt Injection Defense (`MCP` Tool Outputs)** | **Deterministic `ctxfw.sara`** (`<system>`, `[INST]`, role override & Unicode bidi `U+202E` Trojan-Source quarantine) | Probabilistic ML Classifier | Network / API Policy Inspection | Heuristic & ML Scanner | Edge WAF Prompt Classifier |
-| **AST Token Compaction (`FinOps`)** | **42.96% – 90.26% $D_1$ Perimeter Reduction** (`437,351 tok/s`) | **0% (No AST Compaction)** | **0% (No AST Compaction)** | **0% (No AST Compaction)** | **0% (No AST Compaction)** |
-| **Focal Code Signal Preservation ($D_0$)** | **100% Byte-for-Byte Preservation (`AXIOM-3`)** | N/A (Pass-through) | N/A (Pass-through) | N/A (Pass-through) | N/A (Pass-through) |
-| **Cryptographic Audit Trail** | **Append-Only SHA-256 Hash Chain (`TraceKit` 283-byte blocks)** | Cloud Dashboard Logs | Panorama / Strata Cloud Logs | Central Audit Logs | Cloudflare HTTP Logs |
-| **Pre-Commit Architectural Gate** | **Built-in `SWE-Gate` (`evaluate_patch`: cyclomatic $\Delta C$, banned imports, `# type: ignore` ban)** | Not Included | Not Included | Not Included | Not Included |
-| **Median Inspection Latency** | **< 0.8 ms (Warm WAL Cache) / < 5.0 ms Engine** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` (Inline Proxy) | `30 ms – 110 ms` | `15 ms – 80 ms` (Edge RTT) |
-| **Onboarding Complexity** | **Single Command (`pipx install ctxfw && ctxfw init`)** | SDK Integration + API Keys | Enterprise Network Provisioning | Platform Deployment | DNS / Worker Routing |
+| **Primary Protection Layer** | **Pre-Ingestion AST, Repository Context & MCP Tool Boundary (`stdio` / Local Proxy)** | Runtime HTTP Prompt / Response API Classifier | Enterprise Cloud Network & Runtime AI Security | ML Supply Chain & Runtime LLM Guardrails | Edge WAF for HTTP LLM API Endpoints |
+| **Data Sovereignty / Egress** | **100% Zero-Egress (Air-Gapped Local RAM & SQLite WAL)** | Cloud API Egress (or heavy Enterprise container) | Cloud Inspection / Network Appliance | Cloud / Self-Hosted ML Inference | Cloud Edge Proxy Egress |
+| **Indirect Prompt Injection Defense (`MCP` / Tool I/O)** | **Deterministic `ctxfw.sara`**: Blocks `<system>`, `[INST]`, role hijacks, null-bytes & Trojan-Source Unicode bidi escapes (`U+202E`) | Probabilistic ML Bert/Transformer classifier | Network + Runtime policy inspection | Heuristic + Vector DB + ML classifier | Edge WAF regex + LLM scoring |
+| **Token & FinOps Cost Reduction** | **42.96% – 90.26% $D_1$ AST Bloat Eliminated** (~**$87.70 USD saved per 1K calls**) | **0% token reduction** (bills per API call) | **0% token reduction** | **0% token reduction** | **0% token reduction** |
+| **Focal Code Signal Preservation ($D_0$)** | **100.00% Byte-for-Byte Identical (`AXIOM-3`)** — Zero focal loss | N/A (Pass-through text) | N/A (Pass-through text) | N/A (Pass-through text) | N/A (Pass-through text) |
+| **Inspection Latency (P50 / P95)** | **0.33 ms P50 / 1.72 ms P95 (SARA) · < 0.8 ms (Warm WAL Cache)** | `35 ms – 120 ms` (Network + ML inference) | `25 ms – 90 ms` (Inline proxy) | `40 ms – 150 ms` | `15 ms – 60 ms` (Edge hop) |
+| **Cryptographic Audit Trail** | **Built-in `TraceKit` (`tracekit.db`)**: 283-byte canonical SHA-256 Merkle chain | Cloud dashboard logs | Panorama / Strata Cloud logs | Guardian telemetry logs | Cloudflare dashboard logs |
+| **MCP Ecosystem Native Support** | **Native 5-Tool JSON-RPC `stdio` Server (`Glama Grade A 100/100`)** | No native AST/MCP `stdio` compactor | External MCP discovery only | No native AST/MCP compactor | No local `stdio` MCP compactor |
+| **Setup Complexity** | **1 Command (< 10 sec)**: `pipx install ctxfw && ctxfw init` | API keys + SDK wrapper refactoring | TLS decryption + network routing | SDK + Vector DB setup | DNS / Cloudflare Worker proxy |
 
 ---
 
-## 3. Empirical Answers to Common Enterprise Architecture Questions
+## 3. Reproducible Indirect Prompt Injection & Trojan-Source Benchmark (`OWASP AISVS C02-01` & `arXiv:2510.05244v2`)
 
-### Q1: How does CTXFW defend against Indirect Prompt Injection compared to Lakera Guard or Prisma AIRS?
-Autonomous coding agents frequently read untrusted external data via MCP tools (GitHub issues, third-party dependency docstrings, PR diffs, or logs). **CTXFW's `SARA` engine (`ctxfw.sara`)** inspects every raw tool observation deterministically in `< 5.0 ms`:
-- **Lexical & Trojan-Source Sanitization (`LexicalSanitizer`)**: Immediately rejects null-byte smuggling and invisible Unicode bidirectional control characters (`U+202A`–`U+202E`, `U+2066`–`U+2069`) before they enter the LLM context window.
-- **Deterministic Induction Scoring (`InductionParser` & `RuntimeAuthorizationGate`)**: Detects imperative override directives (`ignore previous instructions`, `<system>`, `[INST]`, unauthorized shell/file-mutation induction) and enforces a 3-tier fail-closed verdict:
-  - `VerdictKind.ALLOW` ($R < 0.35$)
-  - `VerdictKind.STRIP_COMMANDS` ($0.35 \le R < 0.70$)
-  - `VerdictKind.QUARANTINE_TOOL` ($R \ge 0.70$), sealing the forensic digest into `sara.db` and `tracekit.db`.
+To address enterprise security requirements for reproducible, offline verification against indirect prompt injection arriving via untrusted MCP tool outputs, third-party docstrings, and repository files, [`benchmarks/run_sara_security_benchmark.py`](../../benchmarks/run_sara_security_benchmark.py) executes a 24-vector deterministic suite (`16` adversarial indirect prompt-injection / Trojan-Source vectors + `8` benign polyglot production code vectors):
 
-### Q2: Does AST pruning risk losing signal or breaking code generation?
-**No (`0%` focal signal loss).** Under **AXIOM-3 (Zero Focal Degradation)**:
-1. **$D_0$ (Active Focal File under edit)** is preserved **100% byte-for-byte** without modification.
-2. **$D_1$ & $D_2$ (Imported Peripheral Dependencies)** retain **100% of their public class hierarchies, function signatures, type annotations, return types, and docstrings**, replacing only internal function bodies with valid `...` stubs.
-3. **$D_3$ (Ambient Cartography Manifest)** provides a compact ($\le 1,000$ token) symbol catalog of the surrounding repository, preventing hallucinated imports while cutting peripheral token spend by **42.96% to 90.26%** (verified across [`zulip/zulip`](TRILOGY_EMPIRICAL_BENCHMARK.md), [`PostHog/posthog`](TRILOGY_EMPIRICAL_BENCHMARK.md), and [`apache/airflow`](TRILOGY_EMPIRICAL_BENCHMARK.md)).
-
-### Q3: Does CTXFW add operational complexity to developer workflows?
-**Zero workflow friction.** Unlike cloud proxies that require TLS certificate interception, API key rotation, or SDK wrappers, CTXFW installs in **under 10 seconds** via a single idempotent command:
 ```bash
-pipx install ctxfw && ctxfw init
+python benchmarks/run_sara_security_benchmark.py
 ```
-It automatically detects **Claude Code**, **Claude Desktop**, **Cursor**, and **Windsurf**, creates a timestamped `.bak` backup of existing IDE configs, and runs transparently over local `stdio` JSON-RPC.
+
+| Benchmark Metric | Empirical Result (`ctxfw v4.1.0`) | Verification Standard / Notes |
+| :--- | :---: | :--- |
+| **Total Corpus Size** | **`24` vectors** | `16` Adversarial (`OWASP AISVS C02-01` / `arXiv:2510.05244v2`) + `8` Benign (`Python`, `TS`, `Go`, `SQL`) |
+| **Adversarial Detection Recall** | **`100.0%` (`16 / 16`)** | Role hijacks (`<system>`, `[INST]`, `<|im_start|>`), Trojan-Source BiDi (`U+202E`, `U+2067`), ANSI OSC escapes, RCE pipe-to-shell, subshells `$()`, null-bytes, & `%252e%252e` traversal |
+| **Benign False Positive Rate (FPR)** | **`0.0%` (`0 / 8`)** | `100.0%` Precision — zero false alarms on legitimate `def execute(...)`, Pydantic DTOs, or SQL queries |
+| **Median Inspection Latency (P50)** | **`0.3264 ms`** | Deterministic $O(n)$ in-memory lexical & AST induction parser |
+| **95th Percentile Latency (P95)** | **`1.7200 ms`** | Includes synchronous SQLite WAL cryptographic audit commit (`sara.db`) |
+| **External Network Egress Calls** | **`0` (`100% Zero-Egress`)** | Operates completely offline in air-gapped VPCs and GitHub Actions runners |
+| **SHA-256 Attestation Digest** | `b691dd2824e9c654336f02f350e66ecbbd3ad2fd5ca114528b16b2f5f36f575b` | Deterministic canonical summary digest |
+
+---
+
+## 4. Resolving the 3 Core Enterprise Objections (Empirical Evidence)
+
+### Objection 1: *"Is there independent benchmark evidence against real production codebases and prompt injection vectors?"*
+- **Independent Security Certification (`100/100 Grade A`)**:
+  - Audited by the **[Glama MCP Registry](https://glama.ai/mcp/servers/heuristicolab/ctxfw)** (`Grade A · Security 100/100 · TDQS 4.5/5.0`) and **[Skills Directory](https://www.skillsdirectory.com/authors/heuristicolab)** (`100/100 Security` across 120 static vulnerability patterns).
+- **Deterministic Prompt Injection & Trojan-Source Sieve (`ctxfw.sara` + `ctxfw.rules`)**:
+  - Verified at **100.0% recall and 0.0% false positive rate** (`0.33 ms` P50 latency) via [`benchmarks/run_sara_security_benchmark.py`](../../benchmarks/run_sara_security_benchmark.py).
+- **Production Monorepo Validation (`TRILOGY_EMPIRICAL_BENCHMARK.md`)**:
+  - Verified in isolated Ubuntu 24.04 LTS containers across **[`zulip/zulip`](https://github.com/zulip/zulip)** (`-42.96%` Interface / `-78.20%` Nominal $D_1$ reduction, `44.1 ms`), **[`PostHog/posthog`](https://github.com/PostHog/posthog)** (`-59.53%` $D_1$ reduction, `50.2 ms`), and **[`apache/airflow`](https://github.com/apache/airflow)** (`-66.90%` Interface / `-90.26%` Nominal $D_1$ reduction, **40,428 bloat tokens pruned**, `437,351 tok/s` throughput, `0 bytes` stdio leak).
+
+### Objection 2: *"Does pruning the AST risk losing signal that the coding agent needs?"*
+- **Mathematical Guarantee — `AXIOM-3` (100% Zero Focal Degradation)**:
+  - **`CTXFW` NEVER modifies, summarizes, or prunes the active focal file ($D_0$) being edited or debugged.** $D_0$ is preserved **100% byte-for-byte**.
+  - Compaction is strictly applied to **peripheral imported dependencies ($D_1, D_2$)** where the agent only needs the **typed function signature, class hierarchy, return types, and docstrings** (`...` interface stubs) rather than 5,000 lines of internal helper implementation.
+  - Furthermore, **$D_3$ Ambient Cartography** injects a bounded flat symbol catalog ($\le 1,000$ tokens) up to 3 hops deep, **increasing** agent reasoning accuracy by eliminating *Lost-in-the-Middle* attention degradation. Every compacted output is verified via `ast.parse()` (`100% PASS` syntactic validity).
+
+### Objection 3: *"Does a 6-subsystem firewall add operational complexity?"*
+- **Zero-Touch 1-Command Provisioning (< 10 Seconds)**:
+  - All 6 subsystems (`Tree-Sitter Pruner`, `TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`) ship inside a single pure-Python/C-binding package (`pip install ctxfw`) with **zero external databases or cloud accounts required**.
+  - Running `ctxfw init --global` (or `ctxfw install --claude`) automatically discovers and configures **Claude Code CLI, Claude Desktop, Cursor, and Windsurf** with atomic `.bak.<timestamp>` backups and `3x` idempotency.
+  - Running `ctxfw doctor` verifies the entire stack in `< 2 seconds`.
+
+---
+
+## 5. Recommended Enterprise Defense-in-Depth Stack (`OpenAI` · `Anthropic` · `Azure OpenAI` + `CTXFW` + Cloud WAFs)
+
+`CTXFW` is **100% model-agnostic** across **Anthropic Claude (`Claude Opus 4.6`, `Claude Sonnet 4.6`)**, **OpenAI (`GPT-5.4`, `o3`)**, **Google Gemini (`Gemini 3.1 Pro`)**, and **Microsoft Azure OpenAI Service**, and complements cloud runtime WAFs (`Lakera Guard`, `Prisma AIRS`, `Cloudflare Firewall for AI`):
+- **Layer 0 — Developer Workstation, IDE, MCP Server, and CI/CD Pre-Commit (`CTXFW v4.1.0`)**: Guarantees **Zero-Egress** code sovereignty, cuts LLM API token bills by **43%–72%+** (`4.2x` multi-turn compound savings), enforces `.cursorrules`/`CLAUDE.md` deterministically, and sanitizes MCP tool observations locally before they ever reach OpenAI, Anthropic, or Azure OpenAI.
+- **Layer 7 — Public Cloud API Edge (`Lakera Guard` / `Prisma AIRS` / `Cloudflare`)**: Monitors external end-user chat traffic hitting production customer-support endpoints.

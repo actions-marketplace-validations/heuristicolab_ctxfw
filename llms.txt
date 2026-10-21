@@ -10,7 +10,7 @@ CTXFW (Context Firewall) is an air-gapped, deterministic AST pruning firewall, M
 - **Deterministic Tree-sitter AST Pruning (`AXIOM-3`):** Preserves 100% byte-for-byte focal file implementation ($D_0$) while stripping peripheral dependency bodies ($D_1$, $D_2$) to typed interface contracts and docstrings (`0%` focal signal loss).
 - **FinOps Token Cost Reduction:** Reduces recurring inference expenditure across engineering squads by an audited 42.96% to 90.26% on peripheral dependencies (`~$87.70 USD saved per 1K calls`).
 - **Zero-Trust Local Sandbox (`Zero-Egress`):** Operates entirely in local RAM and SQLite WAL (`tracekit.db`, `sara.db`, `swegate.db`, `tokencast.db`). Zero source code, AST tokens, or prompts are ever transmitted to third-party cloud WAFs.
-- **Axiom Completeness Index (ACI) & SWE-Gate (`ctxfw.swegate`):** Evaluates formal specification invariants (`ACI >= 0.9000`) and verifies unified git diffs (`evaluate_patch`) against cyclomatic complexity bounds, banned imports, and `# type: ignore` suppressions.
+- **Axiom Completeness Index (ACI) & SWE-Gate (`ctxfw.swegate`):** Evaluates formal specification invariants (`ACI >= 0.9000`) and verifies unified git diffs (`evaluate_patch` / `ctxfw gate`) against cyclomatic complexity bounds, banned imports, and `# type: ignore` suppressions.
 - **Triple Surface Multi-Platform Onboarding:** Single-command (`pipx install ctxfw && ctxfw init`) zero-touch discovery and injection for Claude Code CLI, Claude Desktop, Cursor, and Windsurf with timestamped `.bak` snapshot backups.
 
 ## Canonical Empirical Benchmarks
@@ -21,9 +21,9 @@ CTXFW (Context Firewall) is an air-gapped, deterministic AST pruning firewall, M
   - **Apache Airflow Monorepo:** -66.90% D1 perimeter reduction (Interface Mode), -90.26% (Nominal Mode), 40,428 net bloat tokens pruned, 138.2 ms latency, 437,351 tokens/second throughput.
 
 ## Releases & Version History
-- **Current Canonical Version:** `v4.0.1`
-- **Release Dossier:** [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md) | Prior: [`docs/RELEASE_NOTES_v3.9.1.md`](docs/RELEASE_NOTES_v3.9.1.md) | [`docs/RELEASE_NOTES_v3.9.0.md`](docs/RELEASE_NOTES_v3.9.0.md) | [`docs/RELEASE_NOTES_v3.8.0.md`](docs/RELEASE_NOTES_v3.8.0.md)
-  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), multi-repository SQLite WAL isolation, D3 ambient cartography, 467/467 verified tests, and ACI 1.0000 cryptographic attestation seal.
+- **Current Canonical Version:** `v4.1.0`
+- **Release Dossier:** [`docs/RELEASE_NOTES_v4.1.0.md`](docs/RELEASE_NOTES_v4.1.0.md) | Prior: [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md) | [`docs/RELEASE_NOTES_v3.9.1.md`](docs/RELEASE_NOTES_v3.9.1.md) | [`docs/RELEASE_NOTES_v3.9.0.md`](docs/RELEASE_NOTES_v3.9.0.md) | [`docs/RELEASE_NOTES_v3.8.0.md`](docs/RELEASE_NOTES_v3.8.0.md)
+  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), LiveBench 2.0 FinOps model matrix, 4.2x multi-turn compounding, `ctxfw gate` CLI, tamper-evident `--team-merge`, 24-vector OWASP AISVS benchmark, 472/472 verified tests, and ACI 1.0000 cryptographic attestation seal.
 
 ## Interoperability & Integration Endpoints
 - **Native MCP Stdio Engine:**
@@ -44,4 +44,11 @@ CTXFW (Context Firewall) is an air-gapped, deterministic AST pruning firewall, M
 
 ## API & Endpoints
 - Documentation & Live Sensor: https://ctxfw.heuristicolab.com
+- Canonical Model & LiveBench Matrix (JSON): https://ctxfw.heuristicolab.com/v1/model-matrix.json
 - Architectural Inquiries: mo@heuristicolab.com
+
+## Multi-Turn LLM Token Economics (4.2x Compounding) & Licensing Tiers (#pricing)
+- **Why Multi-Turn Savings = 4.2x Single-Turn Ingestion:** Stateless LLM APIs re-send accumulated conversation history on every turn. Across a 15-turn coding session with Prompt Caching (`1.25x` Cache Write on Turn 1, `0.10x` Cache Read on fast follow-ups, and `1.25x` Cache Write re-billing after 5-minute TTL pauses), pruning 72.4% of D1-D3 AST noise on Turn 1 yields a conservative `4.2x` compounded cost reduction.
+- **Community Sovereign ($0 / Apache 2.0):** Full 5-tool MCP server, D0->D3 AST pruner, multi-repo SQLite WAL isolation, 100% air-gapped zero telemetry.
+- **Team Governance ($199 USD / month Flat Squad — up to 15 developers & 5 CI/CD repos, includes 7-day trial):** CI/CD Pull Request Gate (`ctxfw gate`), tamper-evident SHA-256 team FinOps consolidation (`ctxfw report --team-merge`), unified squad `TokenCast` budgets & `RulesCompiler` policies.
+- **Enterprise & Tier 0 Argos Audit ($1,500 USD flat 24h audit / Custom Annual VPC):** 24h forensic nSLOC audit, air-gapped multi-node proxy, SOC 2 / PCI-DSS / EU AI Act cryptographic `TraceKit` exports, <4h SLA.

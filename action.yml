@@ -1,0 +1,46 @@
+# manifest_hash: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
+name: "CTXFW // Sovereign Context Firewall & SWE-Gate CI"
+author: "Heuristico Lab"
+description: "Zero-Egress AI Agent Governance, SARA Prompt Injection Sieve, and SWE-Gate Pull Request Verifier with FinOps Telemetry."
+branding:
+  icon: "shield"
+  color: "green"
+
+inputs:
+  license-key:
+    description: "CTXFW Team Squad ($199/mo flat) or 7-Day Trial cryptographic license key (CTXFW_LICENSE_KEY)."
+    required: true
+  diff-range:
+    description: "Git revision range to inspect (e.g. origin/main...HEAD or HEAD~1..HEAD)."
+    required: false
+    default: "HEAD~1..HEAD"
+  max-cyclomatic-delta:
+    description: "Maximum permitted cyclomatic complexity increase per patch."
+    required: false
+    default: "10"
+  github-summary:
+    description: "Append Markdown FinOps & SWE-Gate audit summary to $GITHUB_STEP_SUMMARY."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Context Firewall (ctxfw)
+      shell: bash
+      run: |
+        python3 -m pip install --upgrade pip ctxfw
+
+    - name: Verify CTXFW License & Execute SWE-Gate CI Check
+      shell: bash
+      env:
+        CTXFW_LICENSE_KEY: ${{ inputs.license-key }}
+      run: |
+        set -e
+        ctxfw license status
+        SUMMARY_FLAG=""
+        if [ "${{ inputs.github-summary }}" = "true" ]; then
+          SUMMARY_FLAG="--github-summary"
+        fi
+        git diff ${{ inputs.diff-range }} > /tmp/ctxfw_pr.patch || true
+        ctxfw gate --diff-file /tmp/ctxfw_pr.patch --max-cyclomatic-delta "${{ inputs.max-cyclomatic-delta }}" $SUMMARY_FLAG

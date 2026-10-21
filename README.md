@@ -1,16 +1,17 @@
 <div align="center">
 
 # CTXFW // CONTEXT FIREWALL
-### AI Agent Governance, Prompt Injection Firewall (`SARA`) & Deterministic AST Context Compaction for Coding Agents
+### AI Agent Governance, Prompt Injection Firewall (`SARA`) & In-Memory AST Context Compactor for MCP Coding Agents
 
-[![PyPI - Version](https://img.shields.io/badge/PyPI-v4.0.1-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
+[![PyPI - Version](https://img.shields.io/badge/PyPI-v4.1.0-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
 [![PyPI - Downloads](https://img.shields.io/pepy/dt/ctxfw?style=for-the-badge&logo=pypi&logoColor=white&color=007ec6)](https://pepy.tech/project/ctxfw)
 [![Axiomatic Completeness Index](https://img.shields.io/badge/ACI-1.0000_VERIFIED-000000?style=for-the-badge&logo=shield)](https://ctxfw.heuristicolab.com)
-[![Tests](https://img.shields.io/badge/TESTS-467%2F467_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
+[![Tests](https://img.shields.io/badge/TESTS-472%2F472_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
-**The deterministic pre-ingestion firewall between probabilistic LLM agents and production infrastructure.**
+**The deterministic Zero-Egress boundary between probabilistic LLM hallucination, indirect prompt injection, and production infrastructure.**
 
 [Installation](#installation--multi-surface-setup) • [Benchmarks](#ast-pruning-benchmarks) • [CTXFW vs. Cloud WAFs](#ai-agent-governance--prompt-injection-defense-ctxfw-vs-cloud-runtime-wafs) • [Diagnostic](#system-diagnostics) • [Architecture](#architecture) • [Enterprise Governance](#enterprise-governance)
 
@@ -63,7 +64,7 @@ Empirical context reduction metrics generated via `ctxfw.resolve_context_bundle`
 
 ### The Empirical Validation Trilogy (Multi-Repository Destructive A/B)
 
-Audited on isolated Linux environments (Ubuntu 24.04 LTS, Docker ephemeral container) against major production codebases under zero-network conditions. Full forensic dossier: [`docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md`](docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md).
+Audited on remote Linux environments (`root@isolated-runner`, Ubuntu 24.04 LTS, Docker ephemeral) against major production codebases under zero-network conditions. Full forensic dossier: [`docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md`](docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md).
 
 | Target Repository | Architectural Archetype | Active Focal $D_0$ | Peripheral Perimeter $D_1$ | Raw Context ($D_0 + D_1$) | Pruned Context ($D_0 + D_1^*$) | $D_1$ Perimeter Savings | Aggregate Context Savings | MCP Leaks | Syntactic AST Pass | Latency / Throughput |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -83,15 +84,20 @@ Audited on isolated Linux environments (Ubuntu 24.04 LTS, Docker ephemeral conta
 
 While cloud runtime firewalls (**Lakera Guard**, **Palo Alto Networks Prisma AIRS**, **Protect AI Guardian**, **Cloudflare Firewall for AI**) inspect HTTP traffic at the cloud API edge, **CTXFW** secures the **Pre-Ingestion Code, AST & MCP Tool Boundary locally (`Zero-Egress`)** before context ever leaves the developer machine or CI runner. Full comparative dossier: [`docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md`](docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md).
 
-| Capability / Security Dimension | **CTXFW (`Context Firewall v4.0.1`)** | **Lakera Guard** (`Check Point`) | **Palo Alto Prisma AIRS** | **Protect AI / Cloudflare AI WAF** |
+| Capability / Security Dimension | **CTXFW (`Context Firewall v4.1.0`)** | **Lakera Guard** (`Check Point`) | **Palo Alto Prisma AIRS** | **Protect AI / Cloudflare AI WAF** |
 | :--- | :--- | :--- | :--- | :--- |
 | **Enforcement Boundary** | **Pre-Ingestion Local AST & MCP Tool `stdio` / Proxy** | Cloud HTTP Prompt API | Cloud Network & Runtime API | Cloud Edge / ML Inference Proxy |
 | **Code & Data Sovereignty** | **100% Zero-Egress (Air-Gapped Local RAM & SQLite WAL)** | Requires Cloud API Egress | Cloud / Appliance Inspection | Cloud Proxy Egress |
-| **Indirect Prompt Injection (`MCP` / Tools)** | **Deterministic `ctxfw.sara`** (`<system>`, `[INST]`, Trojan-Source Unicode bidi `U+202E` quarantine) | Probabilistic ML Classifier | Runtime Network Policy | Edge WAF / Heuristic Classifier |
+| **Indirect Prompt Injection (`MCP` / Tools)** | **Deterministic `ctxfw.sara`**: **100.0% Recall / 0.0% FPR** (`<system>`, `[INST]`, Trojan-Source `U+202E` quarantine) | Probabilistic ML Classifier | Runtime Network Policy | Edge WAF / Heuristic Classifier |
 | **FinOps Token Cost Reduction** | **42.96% – 90.26% $D_1$ AST Bloat Pruned** (~**$87.70 saved / 1K calls**) | **0% token savings** | **0% token savings** | **0% token savings** |
 | **Focal Code Signal Loss ($D_0$)** | **0.00% Loss (`AXIOM-3`: 100% byte-for-byte $D_0$ preservation)** | N/A (Pass-through) | N/A (Pass-through) | N/A (Pass-through) |
-| **Inspection Latency** | **< 0.8 ms (Warm WAL Cache) / < 5.0 ms Engine** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` | `15 ms – 150 ms` |
+| **Inspection Latency (P50 / P95)** | **0.33 ms P50 / 1.72 ms P95 (SARA) · < 0.8 ms (Warm WAL Cache)** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` | `15 ms – 150 ms` |
 | **Deployment Complexity** | **1 Command (< 10s)**: `pipx install ctxfw && ctxfw init` | SDK wrapper + API keys | TLS decryption + routing | DNS / Proxy routing |
+
+Run the reproducible 24-vector OWASP AISVS `C02-01` & `arXiv:2510.05244v2` Indirect Prompt Injection & Trojan-Source benchmark locally with zero network egress:
+```bash
+python benchmarks/run_sara_security_benchmark.py
+```
 
 ---
 
@@ -104,7 +110,7 @@ pip install --upgrade ctxfw
 pipx install ctxfw
 ```
 
-### 2. Multi-Surface MCP Auto-Configuration (v4.0.1)
+### 2. Multi-Surface MCP Auto-Configuration (v4.1.0)
 Run `ctxfw init` or dedicated installation command `ctxfw install --claude` for automated zero-touch discovery and idempotent injection across your installed coding surfaces:
 ```bash
 # Targeted Claude Code CLI & Claude Desktop auto-installation:
@@ -140,18 +146,28 @@ export ANTHROPIC_BASE_URL="http://localhost:8765/v1"
 export OPENAI_BASE_URL="http://localhost:8765/v1"
 ```
 
-### 4. Verified MCP Ecosystem Directories
-CTXFW is independently audited and certified with **Grade A** compliance across the **Glama MCP Registry** (`TDQS 4.5/5.0 · Security 100/100`) and distributed across canonical MCP directories:
-
-| MCP Ecosystem Registry | Package / Namespace | Verification Status |
-| :--- | :--- | :--- |
-| **[Glama.ai MCP Directory](https://glama.ai/mcp/servers/heuristicolab/ctxfw)** | `heuristicolab/ctxfw` | **Verified Maintainer · Grade A Security & Quality** |
-| **[Official Anthropic MCP Registry](https://registry.modelcontextprotocol.io)** | `io.github.heuristicolab/ctxfw` (`server.json`) | **Registered Official MCP Schema** |
-| **[MCPMarket](https://mcpmarket.com/server/ctxfw)** | `ctxfw` | **Indexed Global Marketplace** |
-| **[GTMStacker Registry](https://gtmstacker.com/tools/ctxfw)** | `ctxfw` | **Indexed JSON Tool Registry** |
-| **[VibeLeaderboard](https://www.vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677)** | `ctxfw` | **Indexed AI-Native Leaderboard** |
+### 4. Verified Registries, MCP Ecosystem Directories & Agent Skills
+CTXFW is independently audited and certified with **Grade A** compliance across both the official **Glama MCP Registry** (`TDQS 4.5/5.0 · Security 100/100`) and **Skills Directory** (`Security: A 100/100` across 120 static security patterns), and indexed across the **7 MCP Ecosystem Directories**:
 
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
+
+- **Glama.ai MCP Directory (Grade A Certified)**: [`glama.ai/mcp/servers/heuristicolab/ctxfw`](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+- **MCPMarket Directory**: [`mcpmarket.com/server/ctxfw`](https://mcpmarket.com/server/ctxfw)
+- **GTMStacker Tool Registry**: [`gtmstacker.com/registry/tool/ctxfw/index.json`](https://gtmstacker.com/registry/tool/ctxfw/index.json)
+- **VibeLeaderboard**: [`vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677`](https://www.vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677)
+- **Official Anthropic MCP Registry (`server.json`)**: [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
+- **PulseMCP Directory**: [`pulsemcp.com/servers?q=ctxfw`](https://www.pulsemcp.com/servers?q=ctxfw)
+
+Install the verified Claude Code / Agent skills directly into `.claude/skills/`:
+```bash
+npx -y skills add heuristicolab/ctxfw --skill context-firewall --agent claude-code
+npx -y skills add heuristicolab/ctxfw --skill axiom-sieve --agent claude-code
+npx -y skills add heuristicolab/ctxfw --skill eval-benchmark --agent claude-code
+npx -y skills add heuristicolab/ctxfw --skill precommit-sentry --agent claude-code
+```
+
+Direct access to tool inspection, schemas, and live diagnostic telemetry on [Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw) and [Skills Directory](https://www.skillsdirectory.com/authors/heuristicolab).
 
 ---
 
@@ -167,19 +183,20 @@ ctxfw doctor
 ========================================================================
   CTXFW DOCTOR // HIGH-ASSURANCE HEALTH & ISOLATION DIAGNOSTIC
 ========================================================================
-[PASS]   Python Package & sys.path        ctxfw v4.0.1 loaded cleanly.
+[PASS]   Python Package & sys.path        ctxfw v4.1.0 loaded cleanly.
 [PASS]   MCP stdio Stream Isolation       100% pure JSON-RPC on stdout. Diagnostic logs isolated to stderr.
 [PASS]   Global CLI Executable (PATH)     Binary 'ctxfw' found in PATH.
 [PASS]   Axiomatic Sieve Engine           Evaluation verified (ACI: 1.0000, Invariants: 5).
 [PASS]   SQLite WAL Cache & Concurrency   Journal mode: WAL, Busy timeout: 5000ms.
 [PASS]   Polyglot Tree-Sitter Grammars    Initialized language parsers (typescript, go, java).
-[PASS]   TraceKit Ledger Audit            Chain status: INTACT. Anchor hash: 57372398d453b7e4...
+[PASS]   TraceKit Ledger Audit            Chain status: INTACT (1275 blocks).
+[PASS]   Sovereign Pentad WAL Ledgers     SARA scans: 331 | TokenCast turns: 1 (FinOps rows: 3872) | Rules: 1056 | SWE-Gate: 13.
 ------------------------------------------------------------------------
 Overall Verdict:            [HEALTHY] [ATTESTED] Perimeter defense operational.
 ========================================================================
 CTXFW // 72.4% AST Bloat Eliminated. Zero Telemetry Egress.
-Need team-wide budget circuit breakers or multi-node proxy governance?
-Control Plane & Enterprise Licensing: https://ctxfw.heuristicolab.com
+Export FinOps ROI: 'ctxfw report --share' | CI Merge Gate: 'ctxfw gate'
+Team Squad ($199/mo flat up to 15 devs): https://ctxfw.heuristicolab.com/pricing/
 ========================================================================
 ```
 
@@ -222,7 +239,7 @@ PROBABILISTIC DOMAIN                      DETERMINISTIC PERIMETER
                                            [ & Git Permitted ]   [ Pre-Commit Abort]
 ```
 
-### Key Subsystems (v4.0.1 Sovereign Pentad):
+### Key Subsystems (v4.1.0 Sovereign Pentad):
 1. **Polyglot Tree-Sitter Pruner & $D_3$ Ambient Cartography**:
    - Compiles topological dependency trees ($D_0$ full, $D_1$ interface, $D_2$ nominal, $D_3$ flat symbol catalog $\le 1,000$ tokens) across **Python**, **TypeScript/JavaScript**, **Go**, and **Java**.
 2. **TraceKit Cryptographic Ledger (`ctxfw.audit`)**:
@@ -256,14 +273,31 @@ Deploys `.git/hooks/pre-commit` to prevent uncertified code commits lacking an a
 
 ---
 
-## Enterprise Governance
+## Enterprise Governance & CI/CD Gate (`v4.1.0`)
 
-For distributed engineering teams requiring centralized policy controls:
-- **Team-wide LLM budget circuit breakers**: Hard token and dollar thresholds with automatic killswitches.
-- **Multi-node reverse proxy governance**: Centralized firewall gateways supporting OpenAI and Anthropic streaming SSE endpoints.
-- **FinOps Telemetry Ledger**: Aggregate tokens saved, cost elusion analytics, and tamper-evident audit trails.
+For engineering squads requiring FinOps consolidation and automated Pull Request governance:
+- **Individual Developer FinOps & LiveBench 2.0 Arbitrage (Free / Apache 2.0)**:
+  ```bash
+  ctxfw report --share
+  ctxfw report --export-json ./my-ledger.json
+  ```
+- **Team Governance & SWE-Gate CI (`$199 USD/month Flat Squad` — up to 15 developers & 5 CI/CD repositories, includes 7-Day Trial)**:
+  ```bash
+  export CTXFW_LICENSE_KEY="CTXFW-TEAM-PRO-..."
+  ctxfw license status
+  ctxfw gate --diff-file pr.patch --github-summary
+  ctxfw report --team-merge ./team-ledgers/
+  ```
+- **Official GitHub Action (`action.yml`)**:
+  ```yaml
+  - name: CTXFW SWE-Gate & FinOps PR Audit
+    uses: heuristicolab/ctxfw@v4
+    with:
+      license-key: ${{ secrets.CTXFW_LICENSE_KEY }}
+      diff-range: "origin/main...HEAD"
+  ```
 
-**Control Plane & Enterprise Licensing:** [https://ctxfw.heuristicolab.com](https://ctxfw.heuristicolab.com)
+**Control Plane, 7-Day Trial & Team Squad Licensing:** [https://ctxfw.heuristicolab.com/pricing/](https://ctxfw.heuristicolab.com/pricing/)
 
 ---
 

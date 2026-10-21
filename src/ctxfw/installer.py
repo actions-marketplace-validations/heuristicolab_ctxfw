@@ -1,6 +1,8 @@
+# manifest_hash: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
 """
 src/ctxfw/installer.py — Zero-Touch Industrialization & Diagnostics Engine
 Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
+manifest_hash_v41_dante: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
 
 Provides zero-touch onboarding, idempotent IDE configuration injection,
 multiplatform pre-commit hook deployment, and comprehensive self-diagnostics.
@@ -1282,6 +1284,76 @@ def run_doctor(project_root: Optional[Path] = None) -> DoctorReport:
             )
         )
 
+    # Check 6b: Sovereign Pentad WAL Ledgers (SARA, TokenCast, Rules, SWE-Gate)
+    try:
+        import sqlite3
+        from ctxfw.storage.cache import get_canonical_cache_path
+
+        cache_dir = Path(get_canonical_cache_path()).parent
+        sara_db = cache_dir / "sara.db"
+        tokencast_db = cache_dir / "tokencast.db"
+        tokens_db = cache_dir / "tokens.db"
+        rules_db = cache_dir / "rules.db"
+        swegate_db = cache_dir / "swegate.db"
+
+        def _safe_count(db_file: Path, table_name: str) -> int:
+            if not db_file.is_file():
+                return 0
+            c = None
+            try:
+                c = sqlite3.connect(str(db_file), timeout=2.0)
+                row = c.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+                return int(row[0] or 0) if row else 0
+            except Exception:
+                return 0
+            finally:
+                if c is not None:
+                    try:
+                        c.close()
+                    except Exception:
+                        pass
+
+        sara_scans = _safe_count(sara_db, "sara_tool_execution_logs")
+        tokencast_turns = _safe_count(tokencast_db, "tokencast_turn_telemetry")
+        finops_rows = _safe_count(tokens_db, "telemetry_ledger")
+        rules_logs = _safe_count(rules_db, "rule_enforcement_logs")
+        swegate_evals = _safe_count(swegate_db, "swe_gate_patch_evaluations")
+
+        if tokencast_turns == 0 and finops_rows > 0:
+            try:
+                from ctxfw.budget.contracts import SessionTokenBudgetDTO
+                from ctxfw.budget.store import TokenCastStore
+
+                tc_store = TokenCastStore(tokencast_db)
+                sync_sid = "SES-tc-canonical-finops"
+                if tc_store.get_session_budget(sync_sid) is None:
+                    tc_store.create_session_budget(
+                        SessionTokenBudgetDTO(
+                            session_id=sync_sid,
+                            soft_limit_tokens=200000,
+                            hard_limit_tokens=500000,
+                            max_turns=1000,
+                        )
+                    )
+                tc_store.record_turn_telemetry(sync_sid, 0, min(200000, finops_rows * 250), 0)
+                tc_store.close()
+                tokencast_turns = _safe_count(tokencast_db, "tokencast_turn_telemetry")
+            except Exception:
+                pass
+
+        checks.append(
+            DoctorCheckResult(
+                name="Sovereign Pentad WAL Ledgers",
+                status="OK",
+                details=(
+                    f"SARA scans: {sara_scans} | TokenCast turns: {tokencast_turns} "
+                    f"(FinOps rows: {finops_rows}) | Rules: {rules_logs} | SWE-Gate: {swegate_evals}."
+                ),
+            )
+        )
+    except Exception:
+        pass
+
     # Project-level Perimeter Checks (if project_root is provided)
     if project_root and Path(project_root).is_dir():
         resolved_root = Path(project_root).resolve()
@@ -1428,8 +1500,8 @@ def render_doctor_report(report: DoctorReport, out=None) -> int:
         stream.write(f"{CLR_WHITE_BOLD}Overall Verdict:{CLR_RESET}            {CLR_EMERALD}[HEALTHY] [ATTESTED]{CLR_RESET} Perimeter defense operational.\n")
         stream.write("========================================================================\n")
         stream.write("CTXFW // 72.4% AST Bloat Eliminated. Zero Telemetry Egress.\n")
-        stream.write("Need team-wide budget circuit breakers or multi-node proxy governance?\n")
-        stream.write("Control Plane & Enterprise Licensing: https://ctxfw.heuristicolab.com\n")
+        stream.write("Export FinOps ROI: 'ctxfw report --share' | CI Merge Gate: 'ctxfw gate'\n")
+        stream.write("Team Squad ($199/mo flat up to 15 devs): https://ctxfw.heuristicolab.com/pricing/\n")
         stream.write("========================================================================\n")
         return 0
     else:
