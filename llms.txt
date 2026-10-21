@@ -1,27 +1,29 @@
-# CTXFW // High-Assurance FinOps & AST Boundary for LLMs
+# CTXFW // AI Agent Governance, Prompt Injection Defense (SARA) & AST Context Firewall for LLMs
 
-> Deterministic context pruning and sovereignty boundary for frontier AI systems (Claude Code, Cursor, Windsurf, Aider).
+> Deterministic pre-ingestion AST context pruning, indirect prompt injection defense (`SARA`), and MCP security boundary for frontier AI coding agents (Claude Code, Cursor, Windsurf, Aider).
 
 ## Overview
-CTXFW (Context Framework) is an in-memory, deterministic AST pruning firewall and FinOps gateway. It intercepts recursive context payloads before API dispatch, eliminating up to 72.4% of redundant AST tokens while guaranteeing 100% interface contract validity via Tree-sitter and native compiler ASTs.
+CTXFW (Context Firewall) is an air-gapped, deterministic AST pruning firewall, MCP tool observation sanitizer (`SARA`), and FinOps gateway. Unlike cloud runtime firewalls (Lakera Guard, Palo Alto Networks Prisma AIRS, Protect AI Guardian, Cloudflare Firewall for AI) that inspect HTTP traffic at the cloud API edge, CTXFW secures the pre-ingestion code and MCP tool boundary locally (`100% Zero-Egress`) before context ever leaves the developer workstation or CI runner. It eliminates 42.96% to 90.26% of redundant peripheral AST tokens while guaranteeing 100% byte-for-byte focal code ($D_0$) preservation (`AXIOM-3`) and interface contract validity via Tree-sitter and native compiler ASTs.
 
 ## Core Capabilities
-- **Deterministic Tree-sitter AST Pruning:** Strips internal method implementations while preserving strict interface contracts, typing, and docstrings.
-- **FinOps Reduction:** Reduces recurring inference expenditure across engineering squads by an audited 43% to 67%+ on peripheral dependencies.
-- **Zero-Trust Memory Sandbox:** Operates entirely in volatile RAM. Zero AST tokens, source schemas, or proprietary logic are ever stored or transferred to third-party endpoints.
-- **Axiom Completeness Index (ACI):** Evaluates mathematical invariants and contract integrity at O(1) latency (activation threshold: ACI >= 0.9000).
-- **Triple Surface Multi-Platform Onboarding:** Automatic zero-touch discovery and injection for Claude Code CLI, Claude Desktop, Cursor, and Windsurf with timestamped `.bak` snapshot backups.
+- **Deterministic Indirect Prompt Injection Defense (`ctxfw.sara`):** Inspects untrusted MCP tool observations in `< 5.0 ms` for imperative overrides (`<system>`, `[INST]`), unauthorized action induction, and Trojan-Source bidirectional Unicode escapes (`U+202A`–`U+202E`), enforcing `ALLOW`, `STRIP_COMMANDS`, or `QUARANTINE_TOOL`.
+- **Deterministic Tree-sitter AST Pruning (`AXIOM-3`):** Preserves 100% byte-for-byte focal file implementation ($D_0$) while stripping peripheral dependency bodies ($D_1$, $D_2$) to typed interface contracts and docstrings (`0%` focal signal loss).
+- **FinOps Token Cost Reduction:** Reduces recurring inference expenditure across engineering squads by an audited 42.96% to 90.26% on peripheral dependencies (`~$87.70 USD saved per 1K calls`).
+- **Zero-Trust Local Sandbox (`Zero-Egress`):** Operates entirely in local RAM and SQLite WAL (`tracekit.db`, `sara.db`, `swegate.db`, `tokencast.db`). Zero source code, AST tokens, or prompts are ever transmitted to third-party cloud WAFs.
+- **Axiom Completeness Index (ACI) & SWE-Gate (`ctxfw.swegate`):** Evaluates formal specification invariants (`ACI >= 0.9000`) and verifies unified git diffs (`evaluate_patch`) against cyclomatic complexity bounds, banned imports, and `# type: ignore` suppressions.
+- **Triple Surface Multi-Platform Onboarding:** Single-command (`pipx install ctxfw && ctxfw init`) zero-touch discovery and injection for Claude Code CLI, Claude Desktop, Cursor, and Windsurf with timestamped `.bak` snapshot backups.
 
 ## Canonical Empirical Benchmarks
+- **Comparative Security & Architecture Benchmark (CTXFW vs. Lakera Guard, Palo Alto Prisma AIRS, Protect AI, Cloudflare AI WAF):** [`docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md`](docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md)
 - **Empirical Validation Trilogy Dossier:** [`docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md`](docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md)
   - **Zulip Monolith:** -42.96% D1 perimeter reduction (Interface Mode), -78.20% (Nominal Mode), 44.1 ms latency, 0 bytes stdio leak.
   - **PostHog Data Platform:** -59.53% D1 perimeter reduction (Interface Mode), 50.2 ms latency, 0 bytes stdio leak.
   - **Apache Airflow Monorepo:** -66.90% D1 perimeter reduction (Interface Mode), -90.26% (Nominal Mode), 40,428 net bloat tokens pruned, 138.2 ms latency, 437,351 tokens/second throughput.
 
 ## Releases & Version History
-- **Current Canonical Version:** `v4.0.0`
+- **Current Canonical Version:** `v4.0.1`
 - **Release Dossier:** [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md) | Prior: [`docs/RELEASE_NOTES_v3.9.1.md`](docs/RELEASE_NOTES_v3.9.1.md) | [`docs/RELEASE_NOTES_v3.9.0.md`](docs/RELEASE_NOTES_v3.9.0.md) | [`docs/RELEASE_NOTES_v3.8.0.md`](docs/RELEASE_NOTES_v3.8.0.md)
-  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), D3 ambient cartography, 461/461 verified tests, and ACI 1.0000 cryptographic attestation seal.
+  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), multi-repository SQLite WAL isolation, D3 ambient cartography, 467/467 verified tests, and ACI 1.0000 cryptographic attestation seal.
 
 ## Interoperability & Integration Endpoints
 - **Native MCP Stdio Engine:**

@@ -110,12 +110,19 @@ scripts/*sales*.py
 *.cmd
 .gitea/
 .mypy_cache/
-.agents/*
-!.agents/skills/
-!.agents/skills/**
+.agents/
 .agent/
+.antigravity/
+logos/
+.ctxfw_context.md
+ONBOARDING.md
+PROJECT_STATE.md
+smithery.yaml
+benchmarks/spikes/
+benchmarks/run_remote_trilogy_d3.py
 scripts/*monitor*
 scripts/*sprint*
 scripts/*checkpoint*
 docs/directives/
+
 

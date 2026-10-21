@@ -1,0 +1,26 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.heuristicolab/ctxfw",
+  "description": "Zero-egress AI Agent Firewall: SARA prompt injection defense, deterministic AST context pruning & MCP governance.",
+  "repository": {
+    "url": "https://github.com/heuristicolab/ctxfw",
+    "source": "github"
+  },
+  "version": "4.0.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "ctxfw",
+      "version": "4.0.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}
