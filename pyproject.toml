@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [
-  { name = "Heuristico LAB // Skunk Works Division", email = "mo@heuristicolab.com" }
+  { name = "Heuristico Lab", email = "mo@heuristicolab.com" }
 ]
 dependencies = [
     "tree-sitter>=0.22.0",
@@ -48,14 +48,16 @@ include = [
     "/pyproject.toml",
     "/.gitattributes",
     "/glama.json",
-    "/smithery.yaml",
     "/server.json",
     "/SPEC.axioms.md"
 ]
 exclude = [
+    "/.agents",
     "/benchmarks",
+    "/docs",
+    "/logos",
+    "/scripts",
     "/tests",
-    "/docs/reports",
     "*.db"
 ]
 

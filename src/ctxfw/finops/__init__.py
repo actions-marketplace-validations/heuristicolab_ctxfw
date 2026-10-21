@@ -348,15 +348,32 @@ def sync_model_matrix(
         return False, f"Offline or remote matrix unreachable ({exc}); using bundled model_matrix.json ({len(load_model_matrix())} models)."
 
 
+from .licensing import (
+    LicensePayloadDTO,
+    LicenseStatus,
+    LicenseTier,
+    LicenseVerificationResult,
+    fetch_revoked_license_ids,
+    issue_license_key,
+    verify_license_key,
+)
+
 __all__ = [
     "BUNDLED_MATRIX_PATH",
     "DEFAULT_MODEL_ID",
     "DEFAULT_COMPOUNDING_FACTOR",
     "ModelPricingSpecDTO",
+    "LicensePayloadDTO",
+    "LicenseStatus",
+    "LicenseTier",
+    "LicenseVerificationResult",
     "load_model_matrix",
     "resolve_model_spec",
     "resolve_active_model",
     "compute_compounded_savings",
     "compute_arbitrage_recommendation",
     "sync_model_matrix",
+    "fetch_revoked_license_ids",
+    "issue_license_key",
+    "verify_license_key",
 ]

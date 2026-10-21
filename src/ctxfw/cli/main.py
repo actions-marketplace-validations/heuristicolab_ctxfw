@@ -1,8 +1,9 @@
+# manifest_hash: a425559f56edf617a357d8abbfec0ecbb9591379a696ba28a1e9c9cf57fdfcbc
 """
 src/ctxfw/cli/main.py — Unified Command Line Interface for Context Firewall (v4.1.0)
-Axiom Manifest Hash: 0dd507acac7dc966a16fa69ccffcb7a51797ce899ca6edab88837448ad38d415
+Axiom Manifest Hash: a425559f56edf617a357d8abbfec0ecbb9591379a696ba28a1e9c9cf57fdfcbc
 Supports direct target file clipboard invocation (`ctxfw <file>`) 
-plus explicit subcommands (`ctxfw benchmark`, `ctxfw mcp`, `ctxfw proxy`, `ctxfw ci`, `ctxfw gate`, `ctxfw audit`, `ctxfw trace`, `ctxfw init`, `ctxfw install`, `ctxfw doctor`, `ctxfw spec`, `ctxfw report`).
+plus explicit subcommands (`ctxfw benchmark`, `ctxfw mcp`, `ctxfw proxy`, `ctxfw ci`, `ctxfw gate`, `ctxfw license`, `ctxfw audit`, `ctxfw trace`, `ctxfw init`, `ctxfw install`, `ctxfw doctor`, `ctxfw spec`, `ctxfw report`).
 """
 from __future__ import annotations
 
@@ -1319,6 +1320,7 @@ def handle_report_command(argv: list[str]) -> int:
     parser.add_argument("--export-json", type=str, default=None, help="Export tamper-evident developer JSON snapshot for team consolidation")
     parser.add_argument("--dev-alias", type=str, default=None, help="Optional developer identifier to hash into DEV-<id> during --export-json")
     parser.add_argument("--team-merge", nargs="+", default=None, help="Consolidate multiple developer JSON snapshots into a Team Executive Report")
+    parser.add_argument("--license-key", type=str, default=None, help="Team/Enterprise license key (or set CTXFW_LICENSE_KEY)")
     parser.add_argument("--output", "-o", type=str, default=None, help="Save report to specified output path")
     parser.add_argument("--db", type=str, default=None, help="Path to SQLite telemetry database")
 
@@ -1333,16 +1335,24 @@ def handle_report_command(argv: list[str]) -> int:
         return 0
 
     if args.team_merge:
+        from ctxfw.finops.licensing import verify_license_key
+
+        lic = verify_license_key(args.license_key)
+        if not lic.is_valid:
+            print(lic.message, file=sys.stderr)
+            return 1
+
         try:
             merged_md = merge_team_reports(args.team_merge)
         except ValueError as err:
             print(f"[ERROR] {err}", file=sys.stderr)
             return 1
+        merged_md = f"{lic.message}\n\n{merged_md}"
         if args.output:
             out_p = Path(args.output).resolve()
             out_p.parent.mkdir(parents=True, exist_ok=True)
             out_p.write_text(merged_md, encoding="utf-8")
-            print(f"[OK] Team executive report written to {out_p}")
+            print(f"[OK] Team executive report written to {out_p} ({lic.message})")
         else:
             print(merged_md)
         return 0
@@ -1410,10 +1420,29 @@ def handle_gate_command(argv: list[str]) -> int:
     parser.add_argument("--allow-type-ignore", action="store_true", help="Permit `# type: ignore` annotations in added lines")
     parser.add_argument("--disallow-import", action="append", default=[], help="Disallow module import (may be specified multiple times)")
     parser.add_argument("--repo-name", type=str, default=None, help="Repository slug (auto-detected from workspace if omitted)")
+    parser.add_argument("--license-key", type=str, default=None, help="Team/Enterprise license key (or set CTXFW_LICENSE_KEY)")
     parser.add_argument("--json", action="store_true", help="Emit structured JSON output")
     parser.add_argument("--github-summary", action="store_true", help="Append Markdown verdict to $GITHUB_STEP_SUMMARY")
 
     args = parser.parse_args(argv)
+
+    from ctxfw.finops.licensing import verify_license_key
+
+    lic = verify_license_key(args.license_key)
+    if not lic.is_valid:
+        sys.stderr.write(f"{lic.message}\n")
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "verdict": "LICENSE_REQUIRED",
+                        "state": lic.status.value,
+                        "message": lic.message,
+                    },
+                    indent=2,
+                )
+            )
+        return 1
 
     # 1. Resolve unified diff text
     diff_text: Optional[str] = None
@@ -1542,11 +1571,18 @@ def handle_gate_command(argv: list[str]) -> int:
         "cyclomatic_delta": audit.cyclomatic_delta,
         "max_cyclomatic_delta": args.max_cyclomatic_delta,
         "architectural_violations": list(audit.architectural_violations),
+        "license": {
+            "id": lic.license_id,
+            "org": lic.org,
+            "tier": lic.tier.value if lic.tier else None,
+            "days_remaining": lic.days_remaining,
+        },
     }
 
     md_lines = [
         f"## SWE-Gate CI Verification // `{'ALLOW_MERGE' if is_allowed else 'REJECTED'}`",
         "",
+        f"- **License Attestation:** `{lic.message}`",
         f"- **Repository:** `{repo_name}`",
         f"- **Evaluation ID:** `{eval_id}`",
         f"- **Verdict:** `{audit.gate_verdict.value}` (`{final_state.value}`)",
@@ -1575,6 +1611,72 @@ def handle_gate_command(argv: list[str]) -> int:
         print(md_summary)
 
     return 0 if is_allowed else 1
+
+
+def handle_license_command(argv: list[str]) -> int:
+    """
+    Handles `ctxfw license [status|activate|issue]` subcommands.
+    """
+    from ctxfw.finops.licensing import issue_license_key, verify_license_key
+
+    parser = argparse.ArgumentParser(
+        prog="ctxfw license",
+        description="Verify, activate, or issue CTXFW Team Squad / Enterprise licenses.",
+    )
+    sub = parser.add_subparsers(dest="action")
+
+    st_p = sub.add_parser("status", help="Verify active Team/Enterprise license status")
+    st_p.add_argument("--key", type=str, default=None, help="Explicit license key to inspect")
+    st_p.add_argument("--json", action="store_true", help="Emit JSON status")
+
+    act_p = sub.add_parser("activate", help="Persist a Team/Enterprise license key to ~/.ctxfw/license.key")
+    act_p.add_argument("key", type=str, help="CTXFW license key string")
+
+    iss_p = sub.add_parser("issue", help="Sign and emit a new license key (requires CTXFW_MASTER_PRIVATE_KEY)")
+    iss_p.add_argument("--org", type=str, required=True, help="Organization or squad name")
+    iss_p.add_argument("--tier", type=str, default="TEAM_TRIAL", choices=["TEAM_TRIAL", "TEAM_PRO", "ENTERPRISE"], help="License tier")
+    iss_p.add_argument("--days", type=int, default=7, help="Validity duration in days (default: 7)")
+    iss_p.add_argument("--id", dest="license_id", type=str, default=None, help="Optional custom license ID (e.g. LIC-ACME-01)")
+    iss_p.add_argument("--max-devs", type=int, default=15, help="Max developers in squad (default: 15)")
+    iss_p.add_argument("--max-repos", type=int, default=5, help="Max CI/CD repositories (default: 5)")
+
+    if not argv:
+        argv = ["status"]
+    args = parser.parse_args(argv)
+
+    if args.action == "activate":
+        lic = verify_license_key(args.key)
+        if not lic.is_valid:
+            print(lic.message, file=sys.stderr)
+            return 1
+        dest = Path.home() / ".ctxfw" / "license.key"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(args.key.strip() + "\n", encoding="utf-8")
+        print(f"[OK] License activated and saved to {dest}\n{lic.message}")
+        return 0
+
+    if args.action == "issue":
+        try:
+            signed_key = issue_license_key(
+                org=args.org,
+                tier=args.tier,
+                days=args.days,
+                license_id=args.license_id,
+                max_devs=args.max_devs,
+                max_repos=args.max_repos,
+            )
+            print(signed_key)
+            return 0
+        except Exception as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 1
+
+    lic = verify_license_key(getattr(args, "key", None))
+    if getattr(args, "json", False):
+        print(lic.model_dump_json(indent=2))
+    else:
+        print(lic.message)
+    return 0 if lic.is_valid else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1696,7 +1798,7 @@ def main():
         parser.parse_args(sys.argv[1:])
         return
 
-    if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "proxy", "ci", "gate", "audit", "trace", "init", "install", "service", "spec", "doctor", "benchmark", "config", "mode", "report"}:
+    if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "proxy", "ci", "gate", "license", "audit", "trace", "init", "install", "service", "spec", "doctor", "benchmark", "config", "mode", "report"}:
         subcmd = sys.argv[1]
         if subcmd == "benchmark":
             parser = build_parser()
@@ -1714,6 +1816,8 @@ def main():
             sys.exit(handle_report_command(sys.argv[1:]))
         elif subcmd == "gate":
             sys.exit(handle_gate_command(sys.argv[1:]))
+        elif subcmd == "license":
+            sys.exit(handle_license_command(sys.argv[1:]))
         elif subcmd == "trace":
             sys.exit(handle_trace_command(sys.argv[1:]))
         elif subcmd == "install":
@@ -1830,6 +1934,7 @@ __all__ = [
     "export_report_json",
     "merge_team_reports",
     "handle_gate_command",
+    "handle_license_command",
     "handle_trace_command",
     "run_trace_verify",
     "main",

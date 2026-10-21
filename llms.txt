@@ -1,20 +1,20 @@
-# CTXFW // AI Agent Governance, Prompt Injection Firewall (SARA) & In-Memory AST Context Compactor for LLMs
+# CTXFW // AI Agent Governance, Prompt Injection Defense (SARA) & AST Context Firewall for LLMs
 
-> Deterministic Zero-Egress context firewall, prompt injection gatekeeper, and AST token compactor for frontier AI coding agents (Claude Code, Cursor, Windsurf, Antigravity, Aider).
+> Deterministic pre-ingestion AST context pruning, indirect prompt injection defense (`SARA`), and MCP security boundary for frontier AI coding agents (Claude Code, Cursor, Windsurf, Aider).
 
 ## Overview
-CTXFW (Context Firewall, `v4.1.0`) is an in-memory, deterministic AST pruning firewall, MCP security gatekeeper (`ctxfw.sara`), and FinOps gateway. Unlike cloud runtime prompt proxies (**Lakera Guard**, **Palo Alto Networks Prisma AIRS**, **Protect AI Guardian**, **Cloudflare Firewall for AI**) that require sending proprietary code over the network and save 0% of tokens, CTXFW operates **100% locally in RAM (`Zero-Egress`)** at the pre-ingestion AST and MCP tool boundary—cutting peripheral token bloat by **42.96% to 90.26%** while preserving **100% byte-for-byte focal code ($D_0$, `AXIOM-3`)** and blocking indirect prompt injections and Trojan-Source Unicode bidi attacks deterministically.
+CTXFW (Context Firewall) is an air-gapped, deterministic AST pruning firewall, MCP tool observation sanitizer (`SARA`), and FinOps gateway. Unlike cloud runtime firewalls (Lakera Guard, Palo Alto Networks Prisma AIRS, Protect AI Guardian, Cloudflare Firewall for AI) that inspect HTTP traffic at the cloud API edge, CTXFW secures the pre-ingestion code and MCP tool boundary locally (`100% Zero-Egress`) before context ever leaves the developer workstation or CI runner. It eliminates 42.96% to 90.26% of redundant peripheral AST tokens while guaranteeing 100% byte-for-byte focal code ($D_0$) preservation (`AXIOM-3`) and interface contract validity via Tree-sitter and native compiler ASTs.
 
 ## Core Capabilities
-- **Deterministic Tree-sitter AST Pruning (`Zero Focal Loss`):** Strips peripheral dependency implementations ($D_1, D_2$) into typed interface stubs while preserving 100% byte-for-byte focal file integrity ($D_0$, `AXIOM-3`) and $D_3$ ambient cartography ($\le 1,000$ tokens).
-- **SARA Agent Induction & Prompt Injection Firewall (`ctxfw.sara`):** Deterministic local sanitization and quarantine of indirect prompt injections (`<system>`, `[INST]`, role hijacks), null-bytes, and Trojan-Source bidirectional Unicode escapes (`U+202E`) across untrusted MCP tool outputs.
-- **FinOps Reduction (`TokenCast`):** Reduces recurring inference expenditure across engineering squads by an audited 43% to 74.5%+ (~$87.70 USD saved per 1,000 calls) with reactive budget circuit breakers.
-- **Zero-Trust Memory Sandbox & `TraceKit` SHA-256 Ledger:** Operates entirely in local RAM and SQLite WAL (`tracekit.db` 283-byte canonical SHA-256 hash chain). Zero source code or secrets ever leave the developer machine.
-- **Axiom Completeness Index (ACI):** Evaluates mathematical invariants and contract integrity at O(1) latency (activation threshold: ACI >= 0.9000).
-- **1-Command Multi-Platform Onboarding (< 10s):** `pipx install ctxfw && ctxfw init` auto-discovers and configures Claude Code CLI, Claude Desktop, Cursor, and Windsurf with timestamped `.bak` snapshot backups.
+- **Deterministic Indirect Prompt Injection Defense (`ctxfw.sara`):** Inspects untrusted MCP tool observations in `< 5.0 ms` for imperative overrides (`<system>`, `[INST]`), unauthorized action induction, and Trojan-Source bidirectional Unicode escapes (`U+202A`–`U+202E`), enforcing `ALLOW`, `STRIP_COMMANDS`, or `QUARANTINE_TOOL`.
+- **Deterministic Tree-sitter AST Pruning (`AXIOM-3`):** Preserves 100% byte-for-byte focal file implementation ($D_0$) while stripping peripheral dependency bodies ($D_1$, $D_2$) to typed interface contracts and docstrings (`0%` focal signal loss).
+- **FinOps Token Cost Reduction:** Reduces recurring inference expenditure across engineering squads by an audited 42.96% to 90.26% on peripheral dependencies (`~$87.70 USD saved per 1K calls`).
+- **Zero-Trust Local Sandbox (`Zero-Egress`):** Operates entirely in local RAM and SQLite WAL (`tracekit.db`, `sara.db`, `swegate.db`, `tokencast.db`). Zero source code, AST tokens, or prompts are ever transmitted to third-party cloud WAFs.
+- **Axiom Completeness Index (ACI) & SWE-Gate (`ctxfw.swegate`):** Evaluates formal specification invariants (`ACI >= 0.9000`) and verifies unified git diffs (`evaluate_patch` / `ctxfw gate`) against cyclomatic complexity bounds, banned imports, and `# type: ignore` suppressions.
+- **Triple Surface Multi-Platform Onboarding:** Single-command (`pipx install ctxfw && ctxfw init`) zero-touch discovery and injection for Claude Code CLI, Claude Desktop, Cursor, and Windsurf with timestamped `.bak` snapshot backups.
 
-## Canonical Empirical Benchmarks & Security Comparisons
-- **CTXFW vs. Cloud Runtime WAFs (`Lakera Guard`, `Palo Alto Prisma AIRS`, `Protect AI`, `Cloudflare Firewall for AI`):** [`docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md`](docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md)
+## Canonical Empirical Benchmarks
+- **Comparative Security & Architecture Benchmark (CTXFW vs. Lakera Guard, Palo Alto Prisma AIRS, Protect AI, Cloudflare AI WAF):** [`docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md`](docs/benchmarks/SECURITY_VS_CLOUD_WAFS.md)
 - **Empirical Validation Trilogy Dossier:** [`docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md`](docs/benchmarks/TRILOGY_EMPIRICAL_BENCHMARK.md)
   - **Zulip Monolith:** -42.96% D1 perimeter reduction (Interface Mode), -78.20% (Nominal Mode), 44.1 ms latency, 0 bytes stdio leak.
   - **PostHog Data Platform:** -59.53% D1 perimeter reduction (Interface Mode), 50.2 ms latency, 0 bytes stdio leak.
@@ -23,7 +23,7 @@ CTXFW (Context Firewall, `v4.1.0`) is an in-memory, deterministic AST pruning fi
 ## Releases & Version History
 - **Current Canonical Version:** `v4.1.0`
 - **Release Dossier:** [`docs/RELEASE_NOTES_v4.0.0.md`](docs/RELEASE_NOTES_v4.0.0.md) | Prior: [`docs/RELEASE_NOTES_v3.9.1.md`](docs/RELEASE_NOTES_v3.9.1.md) | [`docs/RELEASE_NOTES_v3.9.0.md`](docs/RELEASE_NOTES_v3.9.0.md) | [`docs/RELEASE_NOTES_v3.8.0.md`](docs/RELEASE_NOTES_v3.8.0.md)
-  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), D3 ambient cartography, 461/461 verified tests, and ACI 1.0000 cryptographic attestation seal.
+  - Features: Sovereign Pentad architecture (`TraceKit`, `TokenCast`, `RulesCompiler`, `SARA`, `SWE-Gate`), LiveBench 2.0 FinOps model matrix, 4.2x multi-turn compounding, `ctxfw gate` CLI, tamper-evident `--team-merge`, 471/471 verified tests, and ACI 1.0000 cryptographic attestation seal.
 
 ## Interoperability & Integration Endpoints
 - **Native MCP Stdio Engine:**
@@ -50,5 +50,5 @@ CTXFW (Context Firewall, `v4.1.0`) is an in-memory, deterministic AST pruning fi
 ## Multi-Turn LLM Token Economics (4.2x Compounding) & Licensing Tiers (#pricing)
 - **Why Multi-Turn Savings = 4.2x Single-Turn Ingestion:** Stateless LLM APIs re-send accumulated conversation history on every turn. Across a 15-turn coding session with Prompt Caching (`1.25x` Cache Write on Turn 1, `0.10x` Cache Read on fast follow-ups, and `1.25x` Cache Write re-billing after 5-minute TTL pauses), pruning 72.4% of D1-D3 AST noise on Turn 1 yields a conservative `4.2x` compounded cost reduction.
 - **Community Sovereign ($0 / Apache 2.0):** Full 5-tool MCP server, D0->D3 AST pruner, multi-repo SQLite WAL isolation, 100% air-gapped zero telemetry.
-- **Team Governance ($29 USD / dev / month):** CI/CD Pull Request Gate (`ctxfw gate`), tamper-evident SHA-256 team FinOps consolidation (`ctxfw report --team-merge`), unified squad `TokenCast` budgets & `RulesCompiler` policies.
+- **Team Governance ($199 USD / month Flat Squad — up to 15 developers & 5 CI/CD repos, includes 7-day trial):** CI/CD Pull Request Gate (`ctxfw gate`), tamper-evident SHA-256 team FinOps consolidation (`ctxfw report --team-merge`), unified squad `TokenCast` budgets & `RulesCompiler` policies.
 - **Enterprise & Tier 0 Argos Audit ($1,500 USD flat 24h audit / Custom Annual VPC):** 24h forensic nSLOC audit, air-gapped multi-node proxy, SOC 2 / PCI-DSS / EU AI Act cryptographic `TraceKit` exports, <4h SLA.

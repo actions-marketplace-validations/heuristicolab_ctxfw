@@ -194,6 +194,19 @@ def test_team_export_json_and_tamper_evident_team_merge(tmp_path: Path, monkeypa
     assert str(tmp_path) not in raw_snap1
     assert "alice" not in raw_snap1
 
+    # Verify unlicensed --team-merge fails closed (exit code 1)
+    monkeypatch.delenv("CTXFW_LICENSE_KEY", raising=False)
+    monkeypatch.setenv("CTXFW_OFFLINE_LICENSE_CHECK", "1")
+    rc_unlic = handle_report_command(["--team-merge", str(snap1), str(snap2)])
+    assert rc_unlic == 1
+    assert "CTXFW LICENSE REQUIRED" in capsys.readouterr().err
+
+    valid_test_key = (
+        "CTXFW-TEAM-PRO-eyJleHAiOiIyMDM2LTEwLTE4VDAwOjAwOjAwWiIsImlhdCI6IjIwMjYtMTAtMjFUMDA6MDA6MDBaIiwiaWQiOiJMSUMtQ0ktVEVTVC1WQUxJRCIsIm1heF9kZXZzIjoxNSwibWF4X3JlcG9zIjo1LCJvcmciOiJoZXVyaXN0aWNvLWNpIiwidGllciI6IlRFQU1fUFJPIn0."
+        "WO38JeAWRcqT-94JGZEF0pDENNr37pRLbWl3fv7p2Ez9WQL_44X2sKBGxcTpbcFZFIza4FQej-AydLLfASA81SuuoN_bY5Byt0fuFxKPAUY4F-071Cv9urgnIzzHhxI7nqOwVM72KFvXCDndywZPZrPMYQElx0Pv5trQrZc5ECVto3en-B4SFj9jBrdl3JXGCMghWFJjGbPGlWgIbQ66gUo9zXciyf8Frvi4QCfJGuUc8ku-QqrY8tNK1DW3DNaMI93uIoSQqPjqtpCe62G2ZovxxaW-sQgo8X3wv_7hn-ytDr_HGHBzEsqBMc-n7FsNp2VPlHuQw4xbgPCnKk_PUA"
+    )
+    monkeypatch.setenv("CTXFW_LICENSE_KEY", valid_test_key)
+
     # Merge both developer snapshots via CLI
     merged_out = tmp_path / "team_report.md"
     rc_merge = handle_report_command(["--team-merge", str(snap1), str(snap2), "--output", str(merged_out)])
@@ -211,6 +224,7 @@ def test_team_export_json_and_tamper_evident_team_merge(tmp_path: Path, monkeypa
     tampered_file = tmp_path / "tampered.json"
     tampered_file.write_text(json.dumps(tampered_data), encoding="utf-8")
 
+    capsys.readouterr()
     rc_tamper = handle_report_command(["--team-merge", str(tampered_file), str(snap2)])
     assert rc_tamper == 1
     err_out = capsys.readouterr().err
@@ -220,14 +234,37 @@ def test_team_export_json_and_tamper_evident_team_merge(tmp_path: Path, monkeypa
 def test_ctxfw_gate_cli_allow_and_fail_closed_reject(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     """
     Verifies `ctxfw gate` CLI command:
-      - Returns exit code 0 (`ALLOW_MERGE`) on clean diffs with green tests.
+      - Returns exit code 1 (`LICENSE_REQUIRED` / `LICENSE_EXPIRED` / `LICENSE_REVOKED`) without an active license.
+      - Returns exit code 0 (`ALLOW_MERGE`) on clean diffs with green tests and valid license.
       - Returns exit code 1 (`REJECT_ARCHITECTURAL_VIOLATION`) on `# type: ignore`,
         disallowed imports, cyclomatic complexity spikes, or failed functional tests (AXIOM-V41-5).
     """
+    from ctxfw.finops.licensing import LicenseStatus, verify_license_key
+
     swegate_db = tmp_path / "gate_test.db"
     summary_file = tmp_path / "github_step_summary.md"
     monkeypatch.setenv("CTXFW_SWEGATE_DB", str(swegate_db))
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_file))
+    monkeypatch.setenv("CTXFW_OFFLINE_LICENSE_CHECK", "1")
+
+    valid_test_key = (
+        "CTXFW-TEAM-PRO-eyJleHAiOiIyMDM2LTEwLTE4VDAwOjAwOjAwWiIsImlhdCI6IjIwMjYtMTAtMjFUMDA6MDA6MDBaIiwiaWQiOiJMSUMtQ0ktVEVTVC1WQUxJRCIsIm1heF9kZXZzIjoxNSwibWF4X3JlcG9zIjo1LCJvcmciOiJoZXVyaXN0aWNvLWNpIiwidGllciI6IlRFQU1fUFJPIn0."
+        "WO38JeAWRcqT-94JGZEF0pDENNr37pRLbWl3fv7p2Ez9WQL_44X2sKBGxcTpbcFZFIza4FQej-AydLLfASA81SuuoN_bY5Byt0fuFxKPAUY4F-071Cv9urgnIzzHhxI7nqOwVM72KFvXCDndywZPZrPMYQElx0Pv5trQrZc5ECVto3en-B4SFj9jBrdl3JXGCMghWFJjGbPGlWgIbQ66gUo9zXciyf8Frvi4QCfJGuUc8ku-QqrY8tNK1DW3DNaMI93uIoSQqPjqtpCe62G2ZovxxaW-sQgo8X3wv_7hn-ytDr_HGHBzEsqBMc-n7FsNp2VPlHuQw4xbgPCnKk_PUA"
+    )
+    expired_test_key = (
+        "CTXFW-TEAM-TRIAL-eyJleHAiOiIyMDI1LTAxLTA4VDAwOjAwOjAwWiIsImlhdCI6IjIwMjUtMDEtMDFUMDA6MDA6MDBaIiwiaWQiOiJMSUMtQ0ktVEVTVC1FWFBJUkVEIiwibWF4X2RldnMiOjE1LCJtYXhfcmVwb3MiOjUsIm9yZyI6ImFjbWUtZXhwaXJlZCIsInRpZXIiOiJURUFNX1RSSUFMIn0."
+        "F1uVYVfKQ0GlKPnUKdTkQ9l90Mfgeg6pZ6qK1YrLg1htMl8RKBA2vRIUG2vvcCxmua8l2f4Bhnm_DhYlaPBABTaGDhP60uXqWnQ5TIFkAilsQBaoL7NtxjUlG-mE7Kd8TS36KbI7DhzvPMW_Mx6TR-n2op8CrE58G6TW79WiXspq6ZfvYEwilv3WFMLwhOZN6VCl5RyU67VSGm2g4Izn-0AFu7bljUPBngiV-BLDij7fqOmgJPK1G_O_Bf28IJV-HqrXXnGQcndYcG7oyWE7qxfTAq4oAKj--Run36Eg_u-cEtAPUaWQoR7UCUvh6sVtbdkfoO1gShHU_h-pW0udPA"
+    )
+
+    # Verify expired, tampered, and revoked license detection
+    assert verify_license_key(expired_test_key, check_revocation=False).status is LicenseStatus.EXPIRED
+    assert verify_license_key(valid_test_key[:-4] + "AAAA", check_revocation=False).status is LicenseStatus.QUARANTINED
+    assert (
+        verify_license_key(valid_test_key, revoked_ids_override={"LIC-CI-TEST-VALID"}).status
+        is LicenseStatus.REVOKED
+    )
+
+    monkeypatch.setenv("CTXFW_LICENSE_KEY", valid_test_key)
 
     clean_diff = (
         "diff --git a/src/service.py b/src/service.py\n"
