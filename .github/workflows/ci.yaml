@@ -1,3 +1,4 @@
+# manifest_hash: 8d76882a3aecbf8780a71d26e39ed1653bf54aafc42aa92c4c97489efcd41c6b
 name: Hermetic TDD & Multiplatform Standalone CI Matrix
 on:
   push:
@@ -78,7 +79,13 @@ jobs:
       - name: Validate server.json Schema
         run: ./mcp-publisher validate
 
-      - name: Authenticate via GitHub OIDC & Publish to Official Anthropic MCP Registry
+      - name: Idempotent Check & Publish via GitHub OIDC to Official Anthropic MCP Registry
         run: |
+          TARGET_VER=$(python3 -c "import json; print(json.load(open('server.json'))['version'])")
+          ALREADY_PUBLISHED=$(python3 -c "import urllib.request, json; r = json.loads(urllib.request.urlopen('https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw', timeout=15).read()); print(any(s.get('server', {}).get('name') == 'io.github.heuristicolab/ctxfw' and s.get('server', {}).get('version') == '$TARGET_VER' for s in r.get('servers', [])))")
+          if [ "$ALREADY_PUBLISHED" = "True" ]; then
+            echo "✅ io.github.heuristicolab/ctxfw@$TARGET_VER is already active in Official Anthropic MCP Registry — skipping duplicate publish."
+            exit 0
+          fi
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
