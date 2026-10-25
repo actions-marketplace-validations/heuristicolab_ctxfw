@@ -10,6 +10,8 @@
 [![Tests](https://img.shields.io/badge/TESTS-473%2F473_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.heuristicolab%2Fctxfw-00C853?style=for-the-badge&logo=anthropic&logoColor=white)](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
+[![Sovereign Vault](https://img.shields.io/badge/DANTE_VAULT-52_CERTIFIED_ASSETS-10b981?style=for-the-badge)](https://heuristicolab.com/vault)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
 **The deterministic Zero-Egress boundary between probabilistic LLM hallucination, indirect prompt injection, and production infrastructure.**
@@ -151,6 +153,8 @@ export OPENAI_BASE_URL="http://localhost:8765/v1"
 CTXFW is independently audited and certified with **Grade A** compliance across both the official **Glama MCP Registry** (`TDQS 4.5/5.0 · Security 100/100`) and **Skills Directory** (`Security: A 100/100` across 120 static security patterns), and indexed across the **7 MCP Ecosystem Directories**:
 
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.heuristicolab%2Fctxfw-00C853?style=for-the-badge&logo=anthropic&logoColor=white)](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
+[![Sovereign Vault](https://img.shields.io/badge/DANTE_VAULT-52_CERTIFIED_ASSETS-10b981?style=for-the-badge)](https://heuristicolab.com/vault)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
 - **Glama.ai MCP Directory (Grade A Certified)**: [`glama.ai/mcp/servers/heuristicolab/ctxfw`](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
