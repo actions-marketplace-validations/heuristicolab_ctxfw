@@ -18,6 +18,10 @@
 
 [Installation](#installation--multi-surface-setup) • [Benchmarks](#ast-pruning-benchmarks) • [CTXFW vs. Cloud WAFs](#ai-agent-governance--prompt-injection-defense-ctxfw-vs-cloud-runtime-wafs) • [Diagnostic](#system-diagnostics) • [Architecture](#architecture) • [Enterprise Governance](#enterprise-governance)
 
+<p align="center">
+  <img src="logos/ctxfw_v411_live_demo.svg" alt="CTXFW v4.1.1 Live Terminal Demo — SARA Prompt Injection Gate (0.38ms), AST Context Pruner (-66.1%) & M2M Sovereign Vault" width="100%">
+</p>
+
 ---
 
 </div>
