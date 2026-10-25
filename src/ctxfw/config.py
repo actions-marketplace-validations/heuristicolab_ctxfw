@@ -1,5 +1,5 @@
 """
-src/ctxfw/config.py — Dynamic Configuration Engine (v4.1.0)
+src/ctxfw/config.py — Dynamic Configuration Engine (v4.1.1)
 manifest_hash: 0dd507acac7dc966a16fa69ccffcb7a51797ce899ca6edab88837448ad38d415
 legacy_manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
 
