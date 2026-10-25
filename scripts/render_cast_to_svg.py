@@ -1,11 +1,13 @@
-# manifest_hash: 17115315fea30a3c46ca0d986ddeb8eccd3113864a9403383c8002fbed6bd050
+# manifest_hash: dc1dfbd8cac1d564f7bd6c5f31b4d0e3450a0af0e9e37089d0d86365782afefa
 """
 scripts/render_cast_to_svg.py — Deterministic Asciinema (.cast) to Animated CSS SVG Compiler (v4.1.1)
-manifest_hash: 17115315fea30a3c46ca0d986ddeb8eccd3113864a9403383c8002fbed6bd050
+manifest_hash: dc1dfbd8cac1d564f7bd6c5f31b4d0e3450a0af0e9e37089d0d86365782afefa
+legacy_manifest_hash: 17115315fea30a3c46ca0d986ddeb8eccd3113864a9403383c8002fbed6bd050
 
 Compiles docs/benchmarks/ctxfw_v411_90s_showcase.cast into a pure CSS @keyframes
 animated terminal SVG (logos/ctxfw_v411_live_demo.svg) 100% compatible with GitHub's
-Camo image proxy (zero <script> tags, strict XML validation, < 150 KB).
+Camo image proxy (zero <script> tags, strict XML validation, <= 88 visible chars per line,
+zero right-edge clipping across all platforms).
 """
 from __future__ import annotations
 
@@ -32,16 +34,22 @@ ANSI_COLOR_MAP = {
 }
 
 ANSI_TOKEN_RE = re.compile(r"\x1b\[([0-9;]+)m")
+MAX_VISIBLE_LINE_CHARS = 88
 
 
-def _ansi_line_to_tspans(raw_line: str) -> str:
-    """Converts a single ANSI-colored line into escaped SVG <tspan> fragments."""
+def _ansi_line_to_tspans(raw_line: str) -> tuple[str, int]:
+    """Converts a single ANSI-colored line into escaped SVG <tspan> fragments and returns visible length."""
     line = raw_line.replace("\r", "").replace("\n", "")
     if not line.strip():
-        return ""
+        return "", 0
+
+    plain = ANSI_TOKEN_RE.sub("", line)
+    visible_len = len(plain)
+    assert visible_len <= MAX_VISIBLE_LINE_CHARS, (
+        f"Visible line length {visible_len} exceeds {MAX_VISIBLE_LINE_CHARS}: {plain}"
+    )
 
     parts = ANSI_TOKEN_RE.split(line)
-    # parts[0] is text before first code, then pairs of (code, text)
     out: list[str] = []
     current_color = "#cbd5e1"
     current_weight = "normal"
@@ -66,7 +74,7 @@ def _ansi_line_to_tspans(raw_line: str) -> str:
                 f'<tspan fill="{current_color}"{weight_attr}>{html.escape(text_seg)}</tspan>'
             )
 
-    return "".join(out)
+    return "".join(out), visible_len
 
 
 def compile_cast_to_svg(
@@ -84,17 +92,17 @@ def compile_cast_to_svg(
             events.append((float(ts), str(text)))
 
     max_ts = max((e[0] for e in events), default=14.0)
-    width_px = 920
+    width_px = 960
     line_height = 20
     top_padding = 58
-    bottom_padding = 26
+    bottom_padding = 28
     height_px = top_padding + len(events) * line_height + bottom_padding
 
     css_rules: list[str] = []
     text_nodes: list[str] = []
+    max_observed_chars = 0
 
     for i, (ts, raw_text) in enumerate(events):
-        # Map timestamp into [3%, 78%] of the animation cycle so final frame holds for ~4 seconds
         pct_appear = round(3.0 + (ts / max(max_ts, 0.1)) * 72.0, 2)
         pct_pre = max(0.0, round(pct_appear - 0.5, 2))
         css_rules.append(
@@ -102,7 +110,9 @@ def compile_cast_to_svg(
             f"@keyframes K{i}{{0%,{pct_pre}%{{opacity:0}}{pct_appear}%,94%{{opacity:1}}98%,100%{{opacity:0}}}}"
         )
         y_pos = top_padding + (i + 1) * line_height
-        tspans = _ansi_line_to_tspans(raw_text)
+        tspans, vlen = _ansi_line_to_tspans(raw_text)
+        if vlen > max_observed_chars:
+            max_observed_chars = vlen
         if tspans:
             text_nodes.append(
                 f'  <text x="24" y="{y_pos}" class="L{i}" xml:space="preserve">{tspans}</text>'
@@ -117,7 +127,7 @@ def compile_cast_to_svg(
     <style>
       .term-font {{
         font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-        font-size: 12.5px;
+        font-size: 12px;
       }}
       .title-font {{
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -155,25 +165,24 @@ def compile_cast_to_svg(
 </svg>
 """
 
-    # Enforce negative invariants before writing
     assert "<script" not in svg_content.lower(), "SVG shall never contain <script> tags"
     svg_bytes = len(svg_content.encode("utf-8"))
     assert 2000 <= svg_bytes <= 150000, f"SVG byte size {svg_bytes} outside [2000, 150000]"
 
-    # Validate strict XML well-formedness
     ET.fromstring(svg_content)
 
     svg_path.parent.mkdir(parents=True, exist_ok=True)
     svg_path.write_text(svg_content, encoding="utf-8")
     svg_sha256 = hashlib.sha256(svg_content.encode("utf-8")).hexdigest()
 
-    print(f"[OK] Compiled animated SVG: {svg_path} ({svg_bytes:,} bytes, {len(events)} lines)")
-    print(f"[OK] XML Validation       : PASSED (0 <script> tags, Camo-safe CSS @keyframes)")
+    print(f"[OK] Compiled animated SVG: {svg_path} ({svg_bytes:,} bytes, {len(events)} lines, max {max_observed_chars} chars/line <= {MAX_VISIBLE_LINE_CHARS})")
+    print(f"[OK] XML Validation       : PASSED (0 <script> tags, Zero-Clipping Margin Verified)")
     print(f"[OK] SVG SHA-256 Seal     : {svg_sha256}")
     return {
         "svg_path": str(svg_path),
         "svg_bytes": svg_bytes,
         "line_count": len(events),
+        "max_observed_chars": max_observed_chars,
         "svg_sha256": svg_sha256,
     }
 

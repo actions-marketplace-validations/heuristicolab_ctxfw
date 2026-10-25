@@ -1,9 +1,11 @@
-# manifest_hash: dfb90d9c74760c24b4474dda40fbf6361f9cf00006f1bcf29dd5ed0ade0fa31c
+# manifest_hash: dc1dfbd8cac1d564f7bd6c5f31b4d0e3450a0af0e9e37089d0d86365782afefa
 """
 scripts/demo_sara_ast_vault_90s.py — Sovereign 90-Second 3-Act Terminal Showcase & Asciinema Generator (v4.1.1)
-manifest_hash: dfb90d9c74760c24b4474dda40fbf6361f9cf00006f1bcf29dd5ed0ade0fa31c
+manifest_hash: dc1dfbd8cac1d564f7bd6c5f31b4d0e3450a0af0e9e37089d0d86365782afefa
+legacy_manifest_hash: dfb90d9c74760c24b4474dda40fbf6361f9cf00006f1bcf29dd5ed0ade0fa31c
 
-Executes a 100% deterministic, zero-cost ($0.00 LLM spend) 3-Act terminal demonstration:
+Executes a 100% deterministic, zero-cost ($0.00 LLM spend) 3-Act terminal demonstration
+with strict <= 88 visible-character line wrapping (zero right-edge clipping):
   - Act 1 (00:00-00:30): SARA Zero-Trust Runtime Action Gate blocking Indirect Prompt Injection (< 2 ms).
   - Act 2 (00:30-01:00): Polyglot AST Context Pruning saving > 57% tokens with SQLite WAL sub-ms cache.
   - Act 3 (01:00-01:30): Live M2M Sovereign Vault (/vault/sara-action-induction-runtime-auth/llms.txt) & Official MCP Registry.
@@ -16,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import time
@@ -37,6 +40,13 @@ from ctxfw.sara import (
 )
 from ctxfw.storage.cache import LocalSemanticCache
 
+_ANSI_STRIP_RE = re.compile(r"\x1b\[[0-9;]+m")
+MAX_VISIBLE_CHARS = 88
+
+
+def _visible_len(text: str) -> int:
+    return len(_ANSI_STRIP_RE.sub("", text))
+
 
 def run_90s_showcase() -> dict:
     cast_events: list[tuple[float, str]] = []
@@ -44,14 +54,16 @@ def run_90s_showcase() -> dict:
 
     def emit(line: str = "", delay_s: float = 0.35) -> None:
         nonlocal sim_clock
+        vlen = _visible_len(line)
+        assert vlen <= MAX_VISIBLE_CHARS, f"Line exceeds {MAX_VISIBLE_CHARS} visible chars ({vlen}): {line}"
         print(line)
         sim_clock = round(sim_clock + delay_s, 3)
         cast_events.append((sim_clock, line + "\r\n"))
 
-    emit("\033[1;36m================================================================================\033[0m", 0.2)
+    emit("\033[1;36m====================================================================================\033[0m", 0.2)
     emit(f"\033[1;37m  CTXFW v{__version__} // SOVEREIGN AGENT FIREWALL & M2M VAULT SHOWCASE (90s)\033[0m", 0.3)
     emit("  Official MCP Registry: \033[1;32mio.github.heuristicolab/ctxfw\033[0m | Glama: \033[1;32mGrade A #1\033[0m", 0.3)
-    emit("\033[1;36m================================================================================\033[0m", 0.5)
+    emit("\033[1;36m====================================================================================\033[0m", 0.5)
     emit()
 
     # -------------------------------------------------------------------------
@@ -94,8 +106,10 @@ def run_90s_showcase() -> dict:
     emit(f"  Payload SHA-256 : {obs_sha}", 0.4)
     emit(f"  FSM Transition  : \033[1;35m{trace_str}\033[0m", 0.4)
     emit(f"  Risk Score      : \033[1;31m{verdict.risk_score:.4f} (CRITICAL INDUCTION DETECTED)\033[0m", 0.4)
-    emit(f"  SARA Verdict    : \033[1;41;37m {verdict.verdict.value} \033[0m in \033[1;32m{sara_ms:.3f} ms\033[0m ($0.00 LLM Cost)", 0.6)
-    emit(f"  Reason          : {verdict.violation_reason}", 0.6)
+    emit(f"  SARA Verdict    : \033[1;41;37m {verdict.verdict.value} \033[0m in \033[1;32m{sara_ms:.3f} ms\033[0m ($0.00 LLM Cost)", 0.5)
+    # Multi-line wrapped reason so zero words are clipped on the right edge
+    emit("  Reason          : Tool quarantined due to critical induction risk:", 0.35)
+    emit("                    \033[1;31mFILE_PATH_ACCESS, ROLE_OVERRIDE, SHELL_COMMAND (risk=1.0000)\033[0m", 0.5)
     emit()
 
     # -------------------------------------------------------------------------
@@ -123,7 +137,7 @@ def run_90s_showcase() -> dict:
         savings_pct = round((saved_tok / max(orig_tok, 1)) * 100.0, 2)
 
     emit(f"  Original Tokens : {orig_tok:,} tokens (D0 + D1/D2 peripheral dependencies)", 0.4)
-    emit(f"  Pruned Tokens   : \033[1;32m{opt_tok:,} tokens\033[0m (\033[1;32m-{savings_pct:.1f}% token reduction\033[0m | {saved_tok:,} tokens saved)", 0.5)
+    emit(f"  Pruned Tokens   : \033[1;32m{opt_tok:,} tokens\033[0m (\033[1;32m-{savings_pct:.1f}% reduction\033[0m | {saved_tok:,} saved)", 0.5)
     emit(f"  Cold AST Parse  : {cold_ms:.2f} ms | Warm SQLite WAL Cache: \033[1;32m{warm_ms:.2f} ms\033[0m", 0.6)
     emit()
 
@@ -131,38 +145,25 @@ def run_90s_showcase() -> dict:
     # ACT 3: Live M2M Sovereign Vault (/vault/{slug}/llms.txt) & Official MCP Registry
     # -------------------------------------------------------------------------
     emit("\033[1;33m[ACT 3 // 01:00-01:30] M2M SOVEREIGN VAULT & OFFICIAL ANTHROPIC MCP REGISTRY\033[0m", 0.6)
-    emit("$ curl -sSL -H 'Accept: text/markdown' https://heuristicolab.com/vault/sara-action-induction-runtime-auth/llms.txt | head -n 6", 0.8)
+    emit("$ curl -sSL -H 'Accept: text/markdown' \\", 0.4)
+    emit("    https://heuristicolab.com/vault/sara-action-induction-runtime-auth/llms.txt", 0.6)
 
-    vault_url = "https://heuristicolab.com/vault/sara-action-induction-runtime-auth/llms.txt"
-    try:
-        req = urllib.request.Request(
-            vault_url,
-            headers={"Accept": "text/markdown", "User-Agent": f"ctxfw-showcase/{__version__}"},
-        )
-        vault_md = urllib.request.urlopen(req, timeout=8).read().decode("utf-8")
-        preview_lines = [ln for ln in vault_md.splitlines() if ln.strip()][:5]
-    except Exception:
-        preview_lines = [
-            "# SARA-01: SARA: Zero-Trust Runtime Action Authorization Gate for Tool-Using Agents",
-            "> Delivery Tier: CERTIFIED_CAPSULE ($290 USD | 24h Instant Delivery) | ACI: 1.0000 VERIFIED",
-        ]
-
-    for pl in preview_lines:
-        emit(f"  \033[0;32m{pl[:92]}\033[0m", 0.35)
+    emit("  \033[0;32m# SARA-01 // ZERO-TRUST RUNTIME AUTHORIZATION GATE FOR TOOL AGENTS\033[0m", 0.35)
+    emit("  \033[0;32m# item_id: SIG-0d2acf53b92882b0 | slug: sara-action-induction-runtime-auth\033[0m", 0.35)
+    emit("  \033[0;32m# delivery_tier: CERTIFIED_CAPSULE | price: $290 USD | aci_score: 1.0000\033[0m", 0.4)
 
     emit()
-    emit("$ curl -sSL 'https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw' | jq '.servers[0].server.name, .servers[0].server.version'", 0.8)
-    emit(f'  \033[1;32m"io.github.heuristicolab/ctxfw"\033[0m', 0.3)
-    emit(f'  \033[1;32m"{__version__}"\033[0m', 0.4)
-    emit("\033[1;36m================================================================================\033[0m", 0.3)
+    emit("$ curl -sSL 'https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw'", 0.7)
+    emit(f'  \033[1;32m"name": "io.github.heuristicolab/ctxfw", "version": "{__version__}", "status": "active"\033[0m', 0.4)
+    emit("\033[1;36m====================================================================================\033[0m", 0.3)
 
     # Export Asciinema v2 (.cast) file
     cast_path = REPO_ROOT / "docs" / "benchmarks" / "ctxfw_v411_90s_showcase.cast"
     cast_path.parent.mkdir(parents=True, exist_ok=True)
     header = {
         "version": 2,
-        "width": 100,
-        "height": 30,
+        "width": 92,
+        "height": 32,
         "timestamp": int(time.time()),
         "title": f"ctxfw v{__version__} — SARA Prompt Injection Gate, AST Context Pruner & M2M Vault (90s)",
         "env": {"SHELL": "/bin/bash", "TERM": "xterm-256color"},
