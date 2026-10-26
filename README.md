@@ -99,7 +99,10 @@ While cloud runtime firewalls (**Lakera Guard**, **Palo Alto Networks Prisma AIR
 | **FinOps Token Cost Reduction** | **42.96% – 90.26% $D_1$ AST Bloat Pruned** (~**$87.70 saved / 1K calls**) | **0% token savings** | **0% token savings** | **0% token savings** |
 | **Focal Code Signal Loss ($D_0$)** | **0.00% Loss (`AXIOM-3`: 100% byte-for-byte $D_0$ preservation)** | N/A (Pass-through) | N/A (Pass-through) | N/A (Pass-through) |
 | **Inspection Latency (P50 / P95)** | **0.33 ms P50 / 1.72 ms P95 (SARA) · < 0.8 ms (Warm WAL Cache)** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` | `15 ms – 150 ms` |
+| **Pricing Transparency** | **100% Open-Core (`Apache 2.0` Free CLI/MCP) + Public Fixed Pricing (`$199/mo` Squad · `$290` Vault Capsules)** | Opaque Enterprise Quote (*"Contact Sales"*) | Opaque Enterprise Contract (*"Contact Sales"*) | Bundled Enterprise Add-on |
 | **Deployment Complexity** | **1 Command (< 10s)**: `pipx install ctxfw && ctxfw init` | SDK wrapper + API keys | TLS decryption + routing | DNS / Proxy routing |
+
+> **Entity Disambiguation & Independent Benchmark Verification Note:** **CTXFW (`Context Firewall` by Heurístico Lab — `pip install ctxfw` · [`github.com/heuristicolab/ctxfw`](https://github.com/heuristicolab/ctxfw) · [`heuristicolab.com`](https://heuristicolab.com))** is an open-core Python/Tree-Sitter AST & MCP governance engine. It is **not affiliated with** `ContextWall` (`contextwall.io`). Every CTXFW token-reduction (`-59.5%` on `ctxfw/cli.py`, `-66.90%` $D_1$ on `apache/airflow`, `-72.4%` interface stub compaction) and security recall (`100.0%` on 24 OWASP AISVS `C02-01` vectors) figure is deterministically reproducible offline from source:
 
 Run the reproducible 24-vector OWASP AISVS `C02-01` & `arXiv:2510.05244v2` Indirect Prompt Injection & Trojan-Source benchmark locally with zero network egress:
 ```bash
