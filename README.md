@@ -1,19 +1,26 @@
+<!-- mcp-name: io.github.heuristicolab/ctxfw -->
 <div align="center">
 
 # CTXFW // CONTEXT FIREWALL
 ### AI Agent Governance, Prompt Injection Firewall (`SARA`) & In-Memory AST Context Compactor for MCP Coding Agents
 
-[![PyPI - Version](https://img.shields.io/badge/PyPI-v4.1.0-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
+[![PyPI - Version](https://img.shields.io/badge/PyPI-v4.1.1-blue?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/ctxfw/)
 [![PyPI - Downloads](https://img.shields.io/pepy/dt/ctxfw?style=for-the-badge&logo=pypi&logoColor=white&color=007ec6)](https://pepy.tech/project/ctxfw)
 [![Axiomatic Completeness Index](https://img.shields.io/badge/ACI-1.0000_VERIFIED-000000?style=for-the-badge&logo=shield)](https://ctxfw.heuristicolab.com)
-[![Tests](https://img.shields.io/badge/TESTS-472%2F472_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
+[![Tests](https://img.shields.io/badge/TESTS-473%2F473_PASSING-00C853?style=for-the-badge&logo=pytest)](https://pypi.org/project/ctxfw/)
 [![License](https://img.shields.io/badge/LICENSE-APACHE_2.0-black?style=for-the-badge)](LICENSE)
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.heuristicolab%2Fctxfw-00C853?style=for-the-badge&logo=anthropic&logoColor=white)](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
+[![Sovereign Vault](https://img.shields.io/badge/DANTE_VAULT-52_CERTIFIED_ASSETS-10b981?style=for-the-badge)](https://heuristicolab.com/vault)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
 **The deterministic Zero-Egress boundary between probabilistic LLM hallucination, indirect prompt injection, and production infrastructure.**
 
 [Installation](#installation--multi-surface-setup) • [Benchmarks](#ast-pruning-benchmarks) • [CTXFW vs. Cloud WAFs](#ai-agent-governance--prompt-injection-defense-ctxfw-vs-cloud-runtime-wafs) • [Diagnostic](#system-diagnostics) • [Architecture](#architecture) • [Enterprise Governance](#enterprise-governance)
+
+<p align="center">
+  <img src="logos/ctxfw_v411_live_demo.svg" alt="CTXFW v4.1.1 Live Terminal Demo — SARA Prompt Injection Gate (0.38ms), AST Context Pruner (-66.1%) & M2M Sovereign Vault" width="100%">
+</p>
 
 ---
 
@@ -92,7 +99,10 @@ While cloud runtime firewalls (**Lakera Guard**, **Palo Alto Networks Prisma AIR
 | **FinOps Token Cost Reduction** | **42.96% – 90.26% $D_1$ AST Bloat Pruned** (~**$87.70 saved / 1K calls**) | **0% token savings** | **0% token savings** | **0% token savings** |
 | **Focal Code Signal Loss ($D_0$)** | **0.00% Loss (`AXIOM-3`: 100% byte-for-byte $D_0$ preservation)** | N/A (Pass-through) | N/A (Pass-through) | N/A (Pass-through) |
 | **Inspection Latency (P50 / P95)** | **0.33 ms P50 / 1.72 ms P95 (SARA) · < 0.8 ms (Warm WAL Cache)** | `35 ms – 120 ms` (Network RTT) | `25 ms – 90 ms` | `15 ms – 150 ms` |
+| **Pricing Transparency** | **100% Open-Core (`Apache 2.0` Free CLI/MCP) + Public Fixed Pricing (`$199/mo` Squad · `$290` Vault Capsules)** | Opaque Enterprise Quote (*"Contact Sales"*) | Opaque Enterprise Contract (*"Contact Sales"*) | Bundled Enterprise Add-on |
 | **Deployment Complexity** | **1 Command (< 10s)**: `pipx install ctxfw && ctxfw init` | SDK wrapper + API keys | TLS decryption + routing | DNS / Proxy routing |
+
+> **Entity Disambiguation & Independent Benchmark Verification Note:** **CTXFW (`Context Firewall` by Heurístico Lab — `pip install ctxfw` · [`github.com/heuristicolab/ctxfw`](https://github.com/heuristicolab/ctxfw) · [`heuristicolab.com`](https://heuristicolab.com))** is an open-core Python/Tree-Sitter AST & MCP governance engine. It is **not affiliated with** `ContextWall` (`contextwall.io`). Every CTXFW token-reduction (`-59.5%` on `ctxfw/cli.py`, `-66.90%` $D_1$ on `apache/airflow`, `-72.4%` interface stub compaction) and security recall (`100.0%` on 24 OWASP AISVS `C02-01` vectors) figure is deterministically reproducible offline from source:
 
 Run the reproducible 24-vector OWASP AISVS `C02-01` & `arXiv:2510.05244v2` Indirect Prompt Injection & Trojan-Source benchmark locally with zero network egress:
 ```bash
@@ -150,6 +160,8 @@ export OPENAI_BASE_URL="http://localhost:8765/v1"
 CTXFW is independently audited and certified with **Grade A** compliance across both the official **Glama MCP Registry** (`TDQS 4.5/5.0 · Security 100/100`) and **Skills Directory** (`Security: A 100/100` across 120 static security patterns), and indexed across the **7 MCP Ecosystem Directories**:
 
 [![Glama](https://glama.ai/mcp/servers/heuristicolab/ctxfw/badge)](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
+[![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.heuristicolab%2Fctxfw-00C853?style=for-the-badge&logo=anthropic&logoColor=white)](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
+[![Sovereign Vault](https://img.shields.io/badge/DANTE_VAULT-52_CERTIFIED_ASSETS-10b981?style=for-the-badge)](https://heuristicolab.com/vault)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
 
 - **Glama.ai MCP Directory (Grade A Certified)**: [`glama.ai/mcp/servers/heuristicolab/ctxfw`](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
@@ -301,6 +313,7 @@ For engineering squads requiring FinOps consolidation and automated Pull Request
 
 ---
 
+<!-- mcp-name: io.github.heuristicolab/ctxfw -->
 <div align="center">
 <sub>ENGINEERED BY HEURISTICO LAB</sub><br>
 <sub>HIGH-ASSURANCE SYSTEMS GROUP</sub>

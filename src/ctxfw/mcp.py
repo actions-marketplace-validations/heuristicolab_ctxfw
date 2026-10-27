@@ -1,6 +1,6 @@
 # manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 """
-src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v4.1.0)
+src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v4.1.1)
 manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
 manifest_hash_v41_dante: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be

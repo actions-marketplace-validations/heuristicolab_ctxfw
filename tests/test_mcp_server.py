@@ -1,7 +1,8 @@
-# manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
+# manifest_hash: bcbfd27bbd8abd674d8b6345c5e0977bbc4897b1b946ed9e5851ba96746f738d
+# legacy_manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
 """
-tests/test_mcp_server.py — Comprehensive Test Suite for MCP Server over stdio (v4.0.0)
-manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
+tests/test_mcp_server.py — Comprehensive Test Suite for MCP Server over stdio (v4.1.1)
+manifest_hash: bcbfd27bbd8abd674d8b6345c5e0977bbc4897b1b946ed9e5851ba96746f738d
 Validates JSON-RPC 2.0 handshake, tool enumeration, context pruning,
 topological bundle resolution, audit ledger querying, caching, stdio hygiene, and error shielding.
 """
@@ -556,4 +557,25 @@ def test_query_audit_ledger_validation_and_not_found(mcp_server: MCPServer):
     assert missing_payload["status"] == "NOT_FOUND"
     assert "evaluation_id=EVL-0123456789abcdef" in missing_payload["missing"]
     assert "session_id=SES-nonexistent-0001" in missing_payload["missing"]
+
+
+def test_mcp_registry_server_json_and_pypi_ownership_attestation():
+    """Asserts Official Anthropic MCP Registry server.json schema compliance and PyPI README ownership marker."""
+    from ctxfw import __version__
+
+    repo_root = Path(__file__).resolve().parent.parent
+    readme_text = (repo_root / "README.md").read_text(encoding="utf-8")
+    assert "<!-- mcp-name: io.github.heuristicolab/ctxfw -->" in readme_text
+
+    server_data = json.loads((repo_root / "server.json").read_text(encoding="utf-8"))
+    assert server_data["name"] == "io.github.heuristicolab/ctxfw"
+    assert server_data["version"] == __version__
+    assert 20 <= len(server_data["description"]) <= 100
+    assert len(server_data["packages"]) == 1
+    pkg = server_data["packages"][0]
+    assert pkg["registryType"] == "pypi"
+    assert pkg["identifier"] == "ctxfw"
+    assert pkg["version"] == __version__
+    assert pkg["transport"]["type"] == "stdio"
+
 

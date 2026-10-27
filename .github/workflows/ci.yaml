@@ -1,3 +1,4 @@
+# manifest_hash: 8d76882a3aecbf8780a71d26e39ed1653bf54aafc42aa92c4c97489efcd41c6b
 name: Hermetic TDD & Multiplatform Standalone CI Matrix
 on:
   push:
@@ -5,6 +6,7 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   tdd-attestation:
@@ -57,3 +59,33 @@ jobs:
         with:
           name: ctxfw-${{ matrix.os }}
           path: dist/ctxfw*
+
+  publish-mcp-registry:
+    needs: [ tdd-attestation ]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Install Official MCP Registry Publisher (v1.8.4)
+        run: |
+          curl -sSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.4/mcp-publisher_linux_amd64.tar.gz | tar -xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Validate server.json Schema
+        run: ./mcp-publisher validate
+
+      - name: Idempotent Check & Publish via GitHub OIDC to Official Anthropic MCP Registry
+        run: |
+          TARGET_VER=$(python3 -c "import json; print(json.load(open('server.json'))['version'])")
+          ALREADY_PUBLISHED=$(python3 -c "import urllib.request, json; r = json.loads(urllib.request.urlopen('https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw', timeout=15).read()); print(any(s.get('server', {}).get('name') == 'io.github.heuristicolab/ctxfw' and s.get('server', {}).get('version') == '$TARGET_VER' for s in r.get('servers', [])))")
+          if [ "$ALREADY_PUBLISHED" = "True" ]; then
+            echo "✅ io.github.heuristicolab/ctxfw@$TARGET_VER is already active in Official Anthropic MCP Registry — skipping duplicate publish."
+            exit 0
+          fi
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
