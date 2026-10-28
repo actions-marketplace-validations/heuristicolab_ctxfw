@@ -13,6 +13,7 @@
 [![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.heuristicolab%2Fctxfw-00C853?style=for-the-badge&logo=anthropic&logoColor=white)](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
 [![Sovereign Vault](https://img.shields.io/badge/DANTE_VAULT-52_CERTIFIED_ASSETS-10b981?style=for-the-badge)](https://heuristicolab.com/vault)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
+[![Listed on DevList](https://devlist.app/badges/listed-on-devlist-small.svg)](https://devlist.app/listings/ctxfw-context-firewall)
 
 **The deterministic Zero-Egress boundary between probabilistic LLM hallucination, indirect prompt injection, and production infrastructure.**
 
@@ -163,6 +164,7 @@ CTXFW is independently audited and certified with **Grade A** compliance across 
 [![Official MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.heuristicolab%2Fctxfw-00C853?style=for-the-badge&logo=anthropic&logoColor=white)](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
 [![Sovereign Vault](https://img.shields.io/badge/DANTE_VAULT-52_CERTIFIED_ASSETS-10b981?style=for-the-badge)](https://heuristicolab.com/vault)
 [![Security: A — Skills Directory](https://www.skillsdirectory.com/api/skills/heuristicolab-eval-benchmark/badge)](https://www.skillsdirectory.com/authors/heuristicolab)
+[![Listed on DevList](https://devlist.app/badges/listed-on-devlist-small.svg)](https://devlist.app/listings/ctxfw-context-firewall)
 
 - **Glama.ai MCP Directory (Grade A Certified)**: [`glama.ai/mcp/servers/heuristicolab/ctxfw`](https://glama.ai/mcp/servers/heuristicolab/ctxfw)
 - **MCPMarket Directory**: [`mcpmarket.com/server/ctxfw`](https://mcpmarket.com/server/ctxfw)
@@ -170,6 +172,7 @@ CTXFW is independently audited and certified with **Grade A** compliance across 
 - **VibeLeaderboard**: [`vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677`](https://www.vibeleaderboard.ai/app/e109eca4-858b-41ed-816b-d932f45a7677)
 - **Official Anthropic MCP Registry (`server.json`)**: [`registry.modelcontextprotocol.io`](https://registry.modelcontextprotocol.io/v0/servers?search=ctxfw)
 - **PulseMCP Directory**: [`pulsemcp.com/servers?q=ctxfw`](https://www.pulsemcp.com/servers?q=ctxfw)
+- **DevList.app Curated Directory**: [`devlist.app/listings/ctxfw-context-firewall`](https://devlist.app/listings/ctxfw-context-firewall)
 
 Install the verified Claude Code / Agent skills directly into `.claude/skills/`:
 ```bash
