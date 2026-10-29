@@ -1,5 +1,6 @@
 # .cursorrules — Inviolable Engineering Directives
 # Heuristico Lab Sovereign OS / Defense Matrix
+# manifest_hash: 3e9a8cd3a47394da346736e20fe94bbab981f8df76aa35881452f8f064555cf1
 
 1. **Strict Pydantic v2:**
    - All DTOs inherit from `pydantic.BaseModel` with `ConfigDict(frozen=True, extra="forbid")`.
@@ -7,7 +8,7 @@
 
 2. **Zero-Drift Determinism:**
    - Code transformation must rely strictly on standard library `ast.NodeTransformer`.
-   - Never use heuristic regex matching to strip Python code bodies.
+   - Rely exclusively on AST node transformation rather than heuristic regex matching for code body pruning.
 
 3. **Continuous Attestation:**
    - Every commit requires a 100% green run of `pytest tests/ -v` emitting `tests/test_report.json`.

@@ -1,6 +1,7 @@
 # manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 """
 src/ctxfw/mcp.py — Model Context Protocol (MCP) Server over stdio (v4.1.1)
+manifest_hash: 3e9a8cd3a47394da346736e20fe94bbab981f8df76aa35881452f8f064555cf1
 manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
 manifest_hash_v41_dante: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
@@ -43,7 +44,15 @@ _SWEGATE_TOOLS = frozenset(
 
 
 class ToolResult(dict):
-    """Tool invocation result supporting dictionary access and .isError attribute."""
+    """Tool invocation result supporting dictionary access, .isError attribute, and MCP structuredContent."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        if "structuredContent" not in self and "content" in self:
+            self["structuredContent"] = {
+                "content": self.get("content", []),
+                "isError": bool(self.get("isError", False)),
+            }
 
     @property
     def isError(self) -> bool:
@@ -466,11 +475,12 @@ class MCPServer:
                     "name": "prune_file",
                     "description": (
                         "Extract semantic interfaces, types, pydantic models, sanitized raises, and signatures "
-                        "from a source file (`path`) at a given pruning `depth` ('full', 'interface', or 'nominal') "
-                        "and `language`, optionally stripping docstrings (`strip_docs`), while replacing procedural "
-                        "bodies with AST stubs. Use this when you only need to inspect contracts or APIs of an "
-                        "individual dependency without ingesting raw implementation code. For multi-module dependency "
-                        "graphs, use `resolve_context_bundle` instead. Does not modify files on disk (pure in-memory AST operation)."
+                        "from a source file (`path`) at a given pruning `depth` ('full' retains full AST with sanitized raises, "
+                        "'interface' replaces procedural bodies with `...` stubs [default], or 'nominal' retains top-level symbol "
+                        "declarations only) and `language` ('python' [default], 'typescript', 'javascript', 'go', 'java'), "
+                        "optionally stripping docstrings (`strip_docs`, default false). Use this when you only need to inspect "
+                        "contracts or APIs of an individual dependency without ingesting raw implementation code; for multi-module "
+                        "dependency graphs, use `resolve_context_bundle` instead."
                     ),
                     "annotations": read_only_annotations,
                     "inputSchema": {
@@ -482,7 +492,7 @@ class MCPServer:
                             },
                             "depth": {
                                 "type": "string",
-                                "description": "Pruning depth: 'full', 'interface', or 'nominal'",
+                                "description": "Pruning depth: 'full' (complete AST with sanitized raises), 'interface' (signatures, types, and '...' stubs; default), or 'nominal' (top-level symbol names only)",
                                 "default": "interface",
                             },
                             "strip_docs": {
@@ -525,10 +535,11 @@ class MCPServer:
                     "name": "resolve_context_bundle",
                     "description": (
                         "Calculate topological dependency graph distances (D0 full `target_file`, D1 interface stubs, "
-                        "D2 nominal symbols) within `project_root` and compile a token-pruned Markdown context bundle, "
-                        "with optional reactive degradation via `breaker_state` and `session_id`. Use this as your "
-                        "primary context builder before editing a file in a multi-module project. For inspecting "
-                        "isolated files, use `prune_file` instead. Read-only operation."
+                        "D2 nominal symbols) within `project_root` (defaults to `target_file`'s parent directory) and compile "
+                        "a token-pruned Markdown context bundle, with optional reactive degradation via `breaker_state` "
+                        "('CLOSED', 'TRIPPED' strips D2+ modules, or 'HALTED' compacts D1 to nominal stubs) and `session_id` "
+                        "('SES-...' linked to TokenCast budget tracking). Use this as your primary context builder before editing "
+                        "a file in a multi-module project; for inspecting isolated files, use `prune_file` instead."
                     ),
                     "annotations": read_only_annotations,
                     "inputSchema": {
@@ -580,9 +591,11 @@ class MCPServer:
                     "name": "evaluate_spec_axioms",
                     "description": (
                         "Evaluate an architectural specification brief (`brief_text`) against formal determinism rules, "
-                        "negative invariant floors ('never'/'shall never'), and the Axiom Completeness Index (ACI 1.0000). "
-                        "Use this during intake or planning phases before writing code. For verifying unified git diff "
-                        "patches, use `evaluate_patch` instead. Pure read-only analytical evaluation with no side effects."
+                        "requiring at least 5 explicit negative invariants ('never' or 'shall never'), bounded variable domains, "
+                        "deterministic finite-state machine (FSM) transitions, and a 4-class error taxonomy to reach `VERIFIED` "
+                        "status (`aci_score >= 0.9000` and SHA-256 `manifest_hash`; otherwise `QUARANTINED` with remediation notes). "
+                        "Use this during intake or planning phases before writing code; for verifying unified git diff patches, "
+                        "use `evaluate_patch` instead."
                     ),
                     "annotations": read_only_annotations,
                     "inputSchema": {
@@ -590,7 +603,7 @@ class MCPServer:
                         "properties": {
                             "brief_text": {
                                 "type": "string",
-                                "description": "Markdown content of the architectural intake brief to evaluate",
+                                "description": "Markdown content of the architectural intake brief to evaluate (must include negative invariants with 'never'/'shall never', variable bounds, FSM transitions, and error taxonomy)",
                             },
                         },
                         "required": ["brief_text"],
@@ -624,11 +637,12 @@ class MCPServer:
                 {
                     "name": "evaluate_patch",
                     "description": (
-                        "Verify a unified git diff patch (`diff_text`) against SWE-Gate architectural constraints "
-                        "(`max_cyclomatic_delta`, `forbid_type_ignores`, `disallowed_import_modules`) and functional "
-                        "test results (`tests_passed`, `tests_failed`, `functional_verdict`) before allowing merge. "
-                        "Appends immutable audit records (`EVL-...`) in SweGateStore and seals cryptographic blocks in "
-                        "TraceKitStore; use `query_audit_ledger` to retrieve or verify persisted records."
+                        "Verify a unified git diff patch (`diff_text`, with optional `commit_sha`, `author_kind` 'AGENT'|'HUMAN', "
+                        "`pr_id`, `diff_size_bytes`, `repo_name`, and `repo_id`) against SWE-Gate architectural constraints "
+                        "(`max_cyclomatic_delta` default 10, `forbid_type_ignores` default true, `disallowed_import_modules`) and "
+                        "functional test results (`tests_passed` default 1, `tests_failed` default 0, `functional_verdict` "
+                        "'PASSED'|'FAILED') before allowing merge. Appends immutable audit records (`EVL-...`) in SweGateStore "
+                        "and seals cryptographic blocks in TraceKitStore; use `query_audit_ledger` to retrieve or verify persisted records."
                     ),
                     "annotations": write_audit_annotations,
                     "inputSchema": {
@@ -727,10 +741,10 @@ class MCPServer:
                     "name": "query_audit_ledger",
                     "description": (
                         "Retrieve persisted SWE-Gate patch evaluation records and violation findings by `evaluation_id` "
-                        "(`EVL-...`), or verify and inspect cryptographic SHA-256 hash-chained audit sessions in "
-                        "TraceKitStore by `session_id` (`SES-...`) with optional block listing (`include_blocks`, `max_blocks`). "
-                        "Use this for forensic inspection and compliance verification after running `evaluate_patch` or "
-                        "context tools. Pure read-only query with zero ledger mutations."
+                        "(`EVL-<16 lowercase hex chars>`), or verify cryptographic SHA-256 hash-chained audit sessions in "
+                        "TraceKitStore by `session_id` (`SES-...`) with optional block pagination (`include_blocks` default true, "
+                        "`max_blocks` 1..256 default 50); at least one of `evaluation_id` or `session_id` must be provided. "
+                        "Use this for forensic inspection and compliance verification after running `evaluate_patch` or context tools."
                     ),
                     "annotations": read_only_annotations,
                     "inputSchema": {
@@ -1546,7 +1560,7 @@ class MCPServer:
                 formatted_tokens: list[str] = []
                 for k, v in arguments.items():
                     if (
-                        k not in ("diff_text", "patch_diff", "diff", "new_content", "brief_text")
+                        k not in ("diff_text", "patch_diff", "diff", "new_content", "brief_text", "language", "depth")
                         and isinstance(v, (str, int, float))
                         and not isinstance(v, bool)
                     ):
