@@ -5,6 +5,8 @@ manifest_hash: 3e9a8cd3a47394da346736e20fe94bbab981f8df76aa35881452f8f064555cf1
 manifest_hash: 0823534213f7266f79184a2f24e71680fd24cb9c5971f58eab7c2dd124023a7c
 manifest_hash: e58711f27fcc24b86d00be174bced029f3ec73aab400897d6a7aa434782f335c
 manifest_hash_v41_dante: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
+manifest_hash_wave1a: 4b3c6d65f2aeffd4fcfd8ecf166c4983ef94b046d3c9b7fd5e391811d32a5d82
+manifest_hash_wave1b: ebbcd0d607fa09a71dda690ea76104d762b3f279cde258f64917421d39a249f4
 Exposes deterministic context pruning, topological bundle resolution,
 axiomatic spec evaluation, SWE-Gate patch verification, and audit ledger querying
 to AI agents (Cursor, Claude Code, Windsurf) using JSON-RPC 2.0.
@@ -17,7 +19,7 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 import uuid
 
 from ctxfw.core.contracts import (
@@ -79,7 +81,36 @@ class MCPServer:
         swegate_store: Optional[Any] = None,
         swegate_rule: Optional[Any] = None,
         swegate_repo_id: Optional[str] = None,
+        mcp_guard_store: Optional[Any] = None,
+        authorized_roots: Optional[Sequence[Union[str, Path]]] = None,
+        allow_unsandboxed_fallback: bool = False,
+        strict_param_binding: bool = True,
+        pasac_store: Optional[Any] = None,
+        pasac_contract: Optional[Any] = None,
+        pasac_bas: Optional[Any] = None,
+        pasac_risk_state: Optional[Any] = None,
+        enforce_pasac_pep: bool = True,
     ):
+        if allow_unsandboxed_fallback:
+            raise ValueError("allow_unsandboxed_fallback shall never be True (PT-005)")
+
+        resolved_auth_roots: Optional[Tuple[Path, ...]] = None
+        if authorized_roots is not None:
+            from ctxfw.mcp_guard.contracts import canonicalize_mcp_path
+
+            roots_list = list(authorized_roots)
+            if not roots_list:
+                raise ValueError("authorized_roots cannot be an empty sequence (PT-005)")
+            resolved_auth_roots = tuple(canonicalize_mcp_path(str(r)) for r in roots_list)
+        else:
+            env_roots = os.environ.get("CTXFW_WORKSPACE_ROOT", "").strip()
+            if env_roots:
+                from ctxfw.mcp_guard.contracts import canonicalize_mcp_path
+
+                parts = [p.strip() for p in env_roots.split(os.pathsep) if p.strip()]
+                if parts:
+                    resolved_auth_roots = tuple(canonicalize_mcp_path(p) for p in parts)
+
         self.running = True
         self.cache = cache or LocalSemanticCache()
         self._tracekit_store = tracekit_store
@@ -91,10 +122,298 @@ class MCPServer:
         self._swegate_store = swegate_store
         self._swegate_rule = swegate_rule
         self._swegate_repo_id = swegate_repo_id
+        self._mcp_guard_store = mcp_guard_store
+        self._authorized_roots = resolved_auth_roots
+        self._strict_param_binding = bool(strict_param_binding)
+        self._pasac_store = pasac_store
+        self._pasac_contract = pasac_contract
+        self._pasac_bas = pasac_bas
+        self._pasac_risk_state = pasac_risk_state
+        self._enforce_pasac_pep = bool(enforce_pasac_pep)
+        self._pasac_default_cache: Optional[Tuple[Any, Any, Any]] = None
         self._guards = tuple(guards) if guards is not None else ()
         self._workspace_guards_cache: Dict[tuple[str, str], tuple[Any, ...]] = {}
+        self._param_binding_guards: Dict[str, Any] = self._build_builtin_param_guards()
         self.session_id = session_id or os.environ.get("CTXFW_SESSION_ID")
         self._enforce_seq = 0
+
+    def _get_guard_server_id(self) -> str:
+        """Return bounded deterministic server_id for MCP Guard pin ledger."""
+        clean_ver = re.sub(r"[^a-zA-Z0-9_.-]", "_", str(__version__))
+        return f"ctxfw-mcp-{clean_ver}"[:128]
+
+    def _get_mcp_guard_store(self):
+        """Lazily initialize McpGuardStore on canonical or overridden mcp_guard.db path."""
+        if self._mcp_guard_store is None:
+            from ctxfw.mcp_guard.store import McpGuardStore
+            from ctxfw.storage.cache import get_canonical_cache_path
+
+            env_db = os.environ.get("CTXFW_MCP_GUARD_DB")
+            if env_db:
+                db_path = Path(env_db)
+            else:
+                db_path = Path(get_canonical_cache_path()).parent / "mcp_guard.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._mcp_guard_store = McpGuardStore(db_path)
+        return self._mcp_guard_store
+
+    def _build_builtin_param_guards(self) -> Dict[str, Any]:
+        """Construct strict ParameterBindingGuard contracts for all built-in MCP tools."""
+        from ctxfw.mcp_guard.contracts import ParameterBindingGuard
+
+        common_gov = (
+            "session_id",
+            "user_prompt",
+            "prompt",
+            "plan_summary",
+            "plan",
+            "project_root",
+        )
+        swegate_overlay = (
+            "diff_text",
+            "patch_diff",
+            "diff",
+            "commit_sha",
+            "author_kind",
+            "pr_id",
+            "diff_size_bytes",
+            "tests_passed",
+            "tests_failed",
+            "functional_verdict",
+            "max_cyclomatic_delta",
+            "forbid_type_ignores",
+            "disallowed_import_modules",
+            "repo_name",
+            "repo_id",
+            "rule",
+            "rule_id",
+            "meta",
+            "functional",
+        )
+        guards: Dict[str, Any] = {
+            "prune_file": ParameterBindingGuard(
+                tool_name="prune_file",
+                allowed_keys=("path", "depth", "strip_docs", "language") + common_gov + swegate_overlay,
+            ),
+            "resolve_context_bundle": ParameterBindingGuard(
+                tool_name="resolve_context_bundle",
+                allowed_keys=("target_file", "project_root", "breaker_state") + common_gov + swegate_overlay,
+            ),
+            "evaluate_spec_axioms": ParameterBindingGuard(
+                tool_name="evaluate_spec_axioms",
+                allowed_keys=("brief_text",) + common_gov,
+            ),
+            "query_audit_ledger": ParameterBindingGuard(
+                tool_name="query_audit_ledger",
+                allowed_keys=("evaluation_id", "session_id", "include_blocks", "max_blocks") + common_gov,
+            ),
+        }
+        for sg_tool in _SWEGATE_TOOLS:
+            guards[sg_tool] = ParameterBindingGuard(
+                tool_name=sg_tool,
+                allowed_keys=("target_file", "new_content") + common_gov + swegate_overlay,
+            )
+        return guards
+
+    def register_external_tool(
+        self,
+        server_id: str,
+        tool_name: str,
+        description: str,
+        input_schema: Any = None,
+        *,
+        authorized_roots: Optional[Sequence[Union[str, Path]]] = None,
+        allow_unsandboxed_fallback: bool = False,
+        follow_symlinks: bool = False,
+    ) -> Any:
+        """Register & SHA-256 pin an external MCP tool with optional capability boundary contract."""
+        from ctxfw.mcp_guard.contracts import McpToolContractSpec
+
+        if allow_unsandboxed_fallback:
+            raise ValueError("allow_unsandboxed_fallback shall never be True (PT-005)")
+
+        store = self._get_mcp_guard_store()
+        decision = store.register_or_verify_pin(
+            server_id=server_id,
+            tool_name=tool_name,
+            description=description,
+            input_schema=input_schema,
+        )
+        if decision.allowed and authorized_roots is not None:
+            contract = McpToolContractSpec(
+                server_id=server_id,
+                tool_name=tool_name,
+                authorized_roots=tuple(str(r) for r in authorized_roots),
+                allow_unsandboxed_fallback=False,
+                follow_symlinks=follow_symlinks,
+            )
+            store.register_tool_contract(contract)
+        return decision
+
+    def verify_tool_registration(
+        self,
+        server_id: str,
+        tool_name: str,
+        description: str,
+        input_schema: Any = None,
+    ) -> Any:
+        """Verify an MCP tool matches its immutable SHA-256 registration pin (blocks rug pulls)."""
+        return self._get_mcp_guard_store().register_or_verify_pin(
+            server_id=server_id,
+            tool_name=tool_name,
+            description=description,
+            input_schema=input_schema,
+        )
+
+    def _record_security_trace(
+        self,
+        *,
+        session_id: str,
+        user_prompt: str,
+        plan_summary: str,
+        tool_or_file: str,
+        payload: str,
+    ) -> None:
+        """Append immutable security block to TraceKitStore without touching sys.stdout."""
+        try:
+            tracekit = self._get_tracekit_store()
+            tracekit.record_step(
+                session_id=session_id,
+                user_prompt=str(user_prompt)[:65536],
+                plan_summary=str(plan_summary)[:16384],
+                tool_or_file=tool_or_file[:512],
+                payload=str(payload)[:65536],
+            )
+        except Exception as exc:
+            try:
+                sys.stderr.write(f"[TraceKit MCPGuard Error] {exc}\n")
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _build_confinement_error(res: Any) -> Dict[str, Any]:
+        """Format deterministic fail-closed confinement denial payload."""
+        rule_id = res.sarif_rule_id.value if getattr(res, "sarif_rule_id", None) else "PT-001"
+        verdict = res.verdict.value if hasattr(res.verdict, "value") else str(res.verdict)
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"MCG_CONFINEMENT_BLOCKED [{rule_id}]: {res.reason}",
+                }
+            ],
+            "isError": True,
+            "policyViolation": True,
+            "mcpGuardBlocked": True,
+            "sarifRuleId": rule_id,
+            "confinementVerdict": verdict,
+        }
+
+    def _check_candidate_paths_confinement(
+        self,
+        *,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        candidate_paths: list[tuple[str, str]],
+        guard_store: Any,
+        guard_server_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Enforce OS component confinement & symlink/TOCTOU blocks (#03 PT-001..PT-005)."""
+        if not candidate_paths:
+            return None
+
+        from ctxfw.mcp_guard.contracts import is_component_confined
+
+        raw_proj_root = arguments.get("project_root")
+        explicit_proj_root = (
+            raw_proj_root.strip()
+            if isinstance(raw_proj_root, str) and raw_proj_root.strip()
+            else None
+        )
+
+        # Validate explicit project_root against configured server authorized_roots first
+        if explicit_proj_root is not None and self._authorized_roots is not None:
+            res_root = is_component_confined(
+                explicit_proj_root,
+                self._authorized_roots,
+                follow_symlinks=False,
+            )
+            if not res_root.allowed:
+                if guard_store is not None:
+                    try:
+                        guard_store.record_confinement_check(
+                            guard_server_id, tool_name, explicit_proj_root, res_root
+                        )
+                    except Exception:
+                        pass
+                return self._build_confinement_error(res_root)
+
+        for p_key, p_val in candidate_paths:
+            if p_key == "project_root":
+                continue
+
+            cand_for_auth = p_val
+            cand_obj = Path(p_val)
+            if (
+                explicit_proj_root is not None
+                and not cand_obj.is_absolute()
+                and not p_val.strip().lower().startswith("file:")
+                and not p_val.strip().startswith("//")
+            ):
+                cand_for_auth = str(Path(explicit_proj_root) / cand_obj)
+
+            if self._authorized_roots is not None:
+                res_auth = is_component_confined(
+                    cand_for_auth,
+                    self._authorized_roots,
+                    follow_symlinks=False,
+                )
+                if not res_auth.allowed:
+                    if guard_store is not None:
+                        try:
+                            guard_store.record_confinement_check(
+                                guard_server_id, tool_name, p_val, res_auth
+                            )
+                        except Exception:
+                            pass
+                    return self._build_confinement_error(res_auth)
+
+            if explicit_proj_root is not None:
+                res_proj = is_component_confined(
+                    p_val,
+                    [explicit_proj_root],
+                    follow_symlinks=False,
+                )
+                if not res_proj.allowed:
+                    if guard_store is not None:
+                        try:
+                            guard_store.record_confinement_check(
+                                guard_server_id, tool_name, p_val, res_proj
+                            )
+                        except Exception:
+                            pass
+                    return self._build_confinement_error(res_proj)
+            elif self._authorized_roots is None:
+                # Even without explicit roots, guard against direct escaping symlink leaf or UNC/URI schemes
+                parent_root = Path(os.path.abspath(p_val)).parent if cand_obj.is_absolute() else Path.cwd()
+                if os.path.islink(p_val) or p_val.startswith("//"):
+                    res_leaf = is_component_confined(
+                        p_val,
+                        [parent_root],
+                        follow_symlinks=False,
+                    )
+                    if not res_leaf.allowed:
+                        if guard_store is not None:
+                            try:
+                                guard_store.record_confinement_check(
+                                    guard_server_id, tool_name, p_val, res_leaf
+                                )
+                            except Exception:
+                                pass
+                        return self._build_confinement_error(res_leaf)
+
+        return None
 
     def _get_tracekit_store(self):
         """Lazily initialize TraceKitStore on canonical or overridden tracekit.db path."""
@@ -125,6 +444,268 @@ class MCPServer:
             db_path = Path(get_canonical_cache_path()).parent / "tokencast.db"
             self._tokencast_store = TokenCastStore(db_path)
         return self._tokencast_store
+
+    def _get_pasac_store(self):
+        """Lazily initialize PasacAssuranceStore on canonical or overridden pasac.db path."""
+        if self._pasac_store is None:
+            from ctxfw.sara.assurance_store import PasacAssuranceStore
+            from ctxfw.storage.cache import get_canonical_cache_path
+
+            env_db = os.environ.get("CTXFW_PASAC_DB")
+            if env_db:
+                db_path = Path(env_db)
+            else:
+                db_path = Path(get_canonical_cache_path()).parent / "pasac.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._pasac_store = PasacAssuranceStore(db_path)
+        return self._pasac_store
+
+    def _resolve_pasac_context(self, session_id: str) -> Tuple[Any, Any, Any]:
+        """Resolve (AssuranceScopeContract, BoundaryAssuranceVector, AgentRiskStateVector) for runtime PEP."""
+        from ctxfw.sara.assurance import (
+            AgentRiskStateVector,
+            AssuranceScopeContract,
+            BoundaryAssuranceVector,
+            EgressPolicyMode,
+            PreflightStatus,
+            derive_contract_digest,
+            format_pasac_session_id,
+            format_pep_action_code,
+        )
+
+        norm_sid = (
+            self._pasac_contract.session_id
+            if self._pasac_contract is not None
+            else format_pasac_session_id(session_id)
+        )
+        strict_bind = bool(self._strict_param_binding)
+        if (
+            self._pasac_default_cache is None
+            or self._pasac_default_cache[0] != (norm_sid, strict_bind)
+        ):
+            def_contract = AssuranceScopeContract(
+                session_id=norm_sid,
+                egress_mode=EgressPolicyMode.OFFLINE_ISOLATED,
+                live_egress_detected=False,
+                cross_run_writable=False,
+                preflight_status=PreflightStatus.VALID,
+                contract_digest=derive_contract_digest(
+                    norm_sid,
+                    self._get_guard_server_id(),
+                    int(strict_bind),
+                ),
+            )
+            def_bas = BoundaryAssuranceVector(
+                probe_id=f"BAS-{format_pep_action_code(norm_sid)[:32]}",
+                session_id=norm_sid,
+                b_scope=0.96,
+                b_identity=0.95 if strict_bind else 0.65,
+                b_network=0.95,
+                b_storage=0.95,
+                b_monitor=0.94,
+                b_response=0.95 if strict_bind else 0.60,
+            )
+            def_risk = AgentRiskStateVector(
+                telemetry_id=f"RISK-{format_pep_action_code(norm_sid)[:31]}",
+                session_id=norm_sid,
+                task_generality_g=0.40,
+                agent_capability_c=0.60,
+                external_exposure_e=0.05,
+                scope_weakness_s=0.10 if strict_bind else 0.55,
+                monitoring_strength_m=0.94,
+                response_speed_r=0.95,
+                impact_severity_i=10.0,
+                exposure_duration_d=1.0,
+                hazard_l_t=0.10,
+            )
+            self._pasac_default_cache = ((norm_sid, strict_bind), def_contract, def_bas, def_risk)
+
+        _, def_contract, def_bas, def_risk = self._pasac_default_cache
+        contract = self._pasac_contract if self._pasac_contract is not None else def_contract
+        bas = self._pasac_bas if self._pasac_bas is not None else def_bas
+        risk_state = self._pasac_risk_state if self._pasac_risk_state is not None else def_risk
+        return contract, bas, risk_state
+
+    def run_pasac_preflight(
+        self,
+        *,
+        mcp_configs: Sequence[Mapping[str, Any]] = (),
+        wal_healthy: bool = True,
+        tracekit_intact: bool = True,
+    ) -> Any:
+        """Execute offline PASAC 6-layer preflight check, bind posture, and record OCC baseline."""
+        from ctxfw.sara.assurance import (
+            PasacLifecycleState,
+            assess_runtime_isolation_posture,
+            format_pasac_session_id,
+        )
+
+        sid = format_pasac_session_id(self.session_id or "mcp-runtime")
+        guard_quarantined = 0
+        if self._mcp_guard_store is not None:
+            try:
+                guard_quarantined = self._mcp_guard_store.count_stats()[1]
+            except Exception:
+                guard_quarantined = 0
+
+        posture = assess_runtime_isolation_posture(
+            session_id=sid,
+            mcp_configs=mcp_configs,
+            wal_healthy=wal_healthy,
+            tracekit_intact=tracekit_intact,
+            confinement_enabled=True,
+            strict_param_binding=self._strict_param_binding,
+            mcp_guard_quarantined_count=guard_quarantined,
+        )
+        self._pasac_contract = posture.contract
+        self._pasac_bas = posture.bas
+        store = self._get_pasac_store()
+        state = (
+            PasacLifecycleState.PREFLIGHT_VERIFIED
+            if posture.passed
+            else PasacLifecycleState.QUARANTINED_BREACH
+        )
+        store.register_scope_contract(posture.contract, lifecycle_state=state)
+        store.record_bas_probe(posture.bas)
+        return posture
+
+    def reauthorize_pasac_session(
+        self,
+        *,
+        signoff_code: str,
+        accountability_role: Any,
+        approval_rationale: str,
+        reset_hazard_l_t: float = 0.10,
+    ) -> Any:
+        """Record accountability sign-off to restore CONTAINMENT_HALTED -> PREFLIGHT_VERIFIED."""
+        from ctxfw.sara.assurance import PreflightStatus
+
+        contract, _, risk_state = self._resolve_pasac_context(self.session_id or "mcp-runtime")
+        store = self._get_pasac_store()
+        new_state = store.record_reauthorization(
+            signoff_code=signoff_code,
+            session_id=contract.session_id,
+            accountability_role=accountability_role,
+            approval_rationale=approval_rationale,
+        )
+        if self._pasac_contract is not None and self._pasac_contract.preflight_status != PreflightStatus.VALID:
+            self._pasac_contract = self._pasac_contract.model_copy(
+                update={"preflight_status": PreflightStatus.VALID, "live_egress_detected": False}
+            )
+        if self._pasac_risk_state is not None and self._pasac_risk_state.hazard_l_t >= self._pasac_risk_state.tau_stop:
+            self._pasac_risk_state = self._pasac_risk_state.model_copy(
+                update={"hazard_l_t": reset_hazard_l_t}
+            )
+        elif risk_state is self._pasac_risk_state:
+            pass
+        return new_state
+
+    def _evaluate_pasac_pre_execution(
+        self,
+        *,
+        tool_name: str,
+        session_id: str,
+        user_prompt: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Enforce conjunctive PEP Allow(a) & synchronous hazard containment before tool execution."""
+        if not self._enforce_pasac_pep:
+            return None
+
+        from ctxfw.sara.assurance import (
+            PasacLifecycleState,
+            evaluate_pep_gate,
+            format_pep_action_code,
+        )
+
+        contract, bas, risk_state = self._resolve_pasac_context(session_id)
+        if self._pasac_store is not None:
+            persisted_state = self._pasac_store.get_lifecycle_state(contract.session_id)
+            if persisted_state in (
+                PasacLifecycleState.CONTAINMENT_HALTED,
+                PasacLifecycleState.QUARANTINED_BREACH,
+            ):
+                reason = (
+                    f"PASAC_PEP_BLOCKED [{persisted_state.value}]: Session '{contract.session_id}' "
+                    f"halted awaiting accountability reauthorization before running '{tool_name}'."
+                )
+                self._record_security_trace(
+                    session_id=session_id,
+                    user_prompt=user_prompt,
+                    plan_summary=f"PASAC containment halt enforced on {tool_name}",
+                    tool_or_file="sara.assurance",
+                    payload=reason,
+                )
+                return {
+                    "content": [{"type": "text", "text": reason}],
+                    "isError": True,
+                    "policyViolation": True,
+                    "pasacBlocked": True,
+                    "pasacState": persisted_state.value,
+                    "allowAction": False,
+                }
+
+        action_code = format_pep_action_code(f"MCP_{tool_name}")
+        if self._pasac_store is not None:
+            decision = self._pasac_store.evaluate_and_record_pep(
+                contract=contract,
+                bas=bas,
+                risk_state=risk_state,
+                action_code=action_code,
+                in_authorized_scope=True,
+                resource_whitelisted=True,
+                action_risk=0.10,
+                risk_threshold=0.50,
+            )
+        else:
+            decision = evaluate_pep_gate(
+                contract=contract,
+                bas=bas,
+                risk_state=risk_state,
+                action_code=action_code,
+                in_authorized_scope=True,
+                resource_whitelisted=True,
+                action_risk=0.10,
+                risk_threshold=0.50,
+            )
+
+        if not decision.allow_action:
+            if self._pasac_store is None:
+                try:
+                    self._get_pasac_store().evaluate_and_record_pep(
+                        contract=contract,
+                        bas=bas,
+                        risk_state=risk_state,
+                        action_code=action_code,
+                        in_authorized_scope=True,
+                        resource_whitelisted=True,
+                        action_risk=0.10,
+                        risk_threshold=0.50,
+                    )
+                except Exception:
+                    pass
+            reason = (
+                f"PASAC_PEP_BLOCKED [{decision.hazard_regime.value}]: PEP denied '{tool_name}' "
+                f"(A_min={decision.conservative_assurance:.2f}, floor={bas.min_layer_floor:.2f}, "
+                f"preflight={decision.preflight_status.value}, R*={decision.risk_index_r_star:.2f})."
+            )
+            self._record_security_trace(
+                session_id=session_id,
+                user_prompt=user_prompt,
+                plan_summary=f"PASAC PEP denial on {tool_name}",
+                tool_or_file="sara.assurance",
+                payload=reason,
+            )
+            return {
+                "content": [{"type": "text", "text": reason}],
+                "isError": True,
+                "policyViolation": True,
+                "pasacBlocked": True,
+                "allowAction": False,
+                "hazardRegime": decision.hazard_regime.value,
+                "conservativeAssurance": decision.conservative_assurance,
+                "riskIndexRStar": decision.risk_index_r_star,
+            }
+        return None
 
     def _get_sara_store(self):
         """Lazily initialize SaraStore on canonical sara.db path."""
@@ -1460,9 +2041,6 @@ class MCPServer:
         if not isinstance(arguments, dict):
             arguments = {}
 
-        if tool_name == "query_audit_ledger":
-            return ToolResult(self._handle_query_audit_ledger(arguments))
-
         session_id = (
             arguments.get("session_id")
             or params.get("session_id")
@@ -1486,6 +2064,89 @@ class MCPServer:
         )
         if not user_prompt.strip():
             user_prompt = f"MCP tool call: {tool_name}"
+
+        # 0. MCP Guard Pre-Call: SHA-256 Pin Verification & Strict Parameter Binding (#05 P8/P17/P20)
+        guard_server_id = self._get_guard_server_id()
+        guard_store = None
+        try:
+            guard_store = self._get_mcp_guard_store()
+        except Exception:
+            guard_store = None
+
+        if isinstance(tool_name, str) and tool_name in self._param_binding_guards:
+            tools_meta_map = {
+                t.get("name"): t
+                for t in self.handle_tools_list({}).get("tools", [])
+                if isinstance(t, dict) and t.get("name")
+            }
+            if guard_store is not None and tool_name in tools_meta_map:
+                t_meta = tools_meta_map[tool_name]
+                pin_decision = guard_store.register_or_verify_pin(
+                    server_id=guard_server_id,
+                    tool_name=tool_name,
+                    description=str(t_meta.get("description", "")),
+                    input_schema=t_meta.get("inputSchema"),
+                )
+                if not pin_decision.allowed:
+                    self._record_security_trace(
+                        session_id=session_id,
+                        user_prompt=user_prompt,
+                        plan_summary=f"MCP Guard pin/poison block on {tool_name}",
+                        tool_or_file="mcp_guard.pin",
+                        payload=f"MCG_TOOL_QUARANTINED [{pin_decision.state.value}]: {pin_decision.reason}",
+                    )
+                    return ToolResult({
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"MCG_TOOL_QUARANTINED [{pin_decision.state.value}]: {pin_decision.reason}",
+                            }
+                        ],
+                        "isError": True,
+                        "policyViolation": True,
+                        "mcpGuardBlocked": True,
+                        "guardState": pin_decision.state.value,
+                        "quarantineId": pin_decision.quarantine_id,
+                    })
+
+            if self._strict_param_binding:
+                p_guard = self._param_binding_guards[tool_name]
+                if guard_store is not None:
+                    p_ok, _missing, unknown = guard_store.check_and_record_param_binding(
+                        p_guard, arguments, server_id=guard_server_id
+                    )
+                else:
+                    p_ok, _missing, unknown = p_guard.validate_arguments(arguments)
+                if not p_ok and unknown:
+                    reason = (
+                        f"MCG_PARAM_INJECTION: Unknown argument(s) rejected by "
+                        f"ParameterBindingGuard for '{tool_name}': {', '.join(unknown)}"
+                    )
+                    self._record_security_trace(
+                        session_id=session_id,
+                        user_prompt=user_prompt,
+                        plan_summary=f"MCP Guard parameter binding rejection on {tool_name}",
+                        tool_or_file="mcp_guard.param_binding",
+                        payload=reason,
+                    )
+                    return ToolResult({
+                        "content": [{"type": "text", "text": reason}],
+                        "isError": True,
+                        "policyViolation": True,
+                        "mcpGuardBlocked": True,
+                    })
+
+        if tool_name == "query_audit_ledger":
+            return ToolResult(self._handle_query_audit_ledger(arguments))
+
+        # 0b. Proactive Agent Assurance Gate (PASAC PEP Allow(a) & Hazard Containment :: #18)
+        pasac_block = self._evaluate_pasac_pre_execution(
+            tool_name=str(tool_name),
+            session_id=session_id,
+            user_prompt=user_prompt,
+        )
+        if pasac_block is not None:
+            return ToolResult(pasac_block)
 
         # 1. Closed-Loop Security Pre-Execution Interception
         from ctxfw.rules.enforcer import RulesEnforcer, normalize_path
@@ -1531,7 +2192,25 @@ class MCPServer:
             except Exception:
                 pass
         else:
-            # 1b. Check active rule guards against raw tool call
+            # 1b. OS Component Path Confinement & Symlink/TOCTOU Gate (#03 PT-001..PT-005)
+            confinement_block = self._check_candidate_paths_confinement(
+                tool_name=str(tool_name),
+                arguments=arguments,
+                candidate_paths=candidate_paths,
+                guard_store=guard_store,
+                guard_server_id=guard_server_id,
+            )
+            if confinement_block is not None:
+                self._record_security_trace(
+                    session_id=session_id,
+                    user_prompt=user_prompt,
+                    plan_summary=f"MCP Guard confinement block on {tool_name}",
+                    tool_or_file="mcp_guard.confinement",
+                    payload=confinement_block["content"][0]["text"],
+                )
+                return ToolResult(confinement_block)
+
+            # 1c. Check active rule guards against raw tool call
             proj_root_path = None
             if arguments.get("project_root"):
                 try:
@@ -1626,12 +2305,28 @@ class MCPServer:
                     and isinstance(arguments.get("new_content"), str)
                 ):
                     try:
-                        target_p = Path(arguments["target_file"]).resolve()
-                        target_p.parent.mkdir(parents=True, exist_ok=True)
-                        target_p.write_text(
-                            arguments["new_content"], encoding="utf-8", newline="\n"
+                        from ctxfw.mcp_guard.contracts import is_component_confined
+
+                        raw_tf = arguments["target_file"].strip()
+                        raw_pr = arguments.get("project_root")
+                        tf_roots = (
+                            self._authorized_roots
+                            if self._authorized_roots is not None
+                            else ([raw_pr.strip()] if isinstance(raw_pr, str) and raw_pr.strip() else [Path(os.path.abspath(raw_tf)).parent])
                         )
-                        result["patchApplied"] = True
+                        tf_conf = is_component_confined(raw_tf, tf_roots, follow_symlinks=False)
+                        if not tf_conf.allowed:
+                            result = self._build_confinement_error(tf_conf)
+                            result["patchApplied"] = False
+                        else:
+                            target_p = Path(tf_conf.resolved_path or raw_tf).resolve()
+                            if os.path.islink(raw_tf):
+                                raise OSError("Refusing to overwrite symlink target_file (PT-004)")
+                            target_p.parent.mkdir(parents=True, exist_ok=True)
+                            target_p.write_text(
+                                arguments["new_content"], encoding="utf-8", newline="\n"
+                            )
+                            result["patchApplied"] = True
                     except (OSError, UnicodeError) as io_exc:
                         result["isError"] = True
                         result["patchApplied"] = False
@@ -1787,41 +2482,119 @@ class MCPServer:
                             else:
                                 project_root = target_file.parent.resolve()
 
-                            firewall = ContextFirewallEngine(project_root=project_root, cache=self.cache)
-                            bundle = firewall.build_context(
-                                target_file,
-                                breaker_state=arguments.get("breaker_state"),
-                                session_id=session_id,
-                                tokencast_store=self._get_tokencast_store(),
-                                tracekit_store=self._get_tracekit_store(),
+                            from ctxfw.mcp_guard.contracts import (
+                                ConfinementCheckResult,
+                                DetectionLayer,
+                                SarifBypassFinding,
+                                SarifRuleId,
+                                ValidationVerdict,
+                                is_component_confined,
                             )
 
-                            raw_sources_list: list[str] = [target_raw]
-                            candidate_rels = list(bundle.entries.keys())
+                            confinement_violation: Optional[Dict[str, Any]] = None
+                            firewall = None
                             try:
-                                for rel_p, dist in firewall.graph.get_distances(target_file).items():
-                                    if dist <= 3 and rel_p not in candidate_rels:
-                                        candidate_rels.append(rel_p)
-                            except Exception:
-                                pass
+                                firewall = ContextFirewallEngine(project_root=project_root, cache=self.cache)
+                                bundle = firewall.build_context(
+                                    target_file,
+                                    breaker_state=arguments.get("breaker_state"),
+                                    session_id=session_id,
+                                    tokencast_store=self._get_tokencast_store(),
+                                    tracekit_store=self._get_tracekit_store(),
+                                )
+                            except ValueError as fw_exc:
+                                exc_msg = str(fw_exc)
+                                if "subpath" in exc_msg.lower() or "escape" in exc_msg.lower():
+                                    dep_conf = ConfinementCheckResult(
+                                        verdict=ValidationVerdict.DENY_SYMLINK_ESCAPE,
+                                        allowed=False,
+                                        sarif_rule_id=SarifRuleId.PT_004,
+                                        reason=f"Dependency resolved outside project_root confinement (PT-004): {exc_msg}"[:512],
+                                        finding=SarifBypassFinding(
+                                            rule_id=SarifRuleId.PT_004,
+                                            layer=DetectionLayer.SANDBOX_RUNTIME,
+                                            path_candidate=str(target_file)[:512],
+                                            message=f"Dependency escaped workspace root: {exc_msg}"[:512],
+                                        ),
+                                    )
+                                    if guard_store is not None:
+                                        try:
+                                            guard_store.record_confinement_check(
+                                                guard_server_id,
+                                                "resolve_context_bundle",
+                                                str(target_file),
+                                                dep_conf,
+                                            )
+                                        except Exception:
+                                            pass
+                                    self._record_security_trace(
+                                        session_id=session_id,
+                                        user_prompt=user_prompt,
+                                        plan_summary="MCP Guard blocked escaped dependency during resolve_context_bundle",
+                                        tool_or_file="mcp_guard.confinement",
+                                        payload=dep_conf.reason,
+                                    )
+                                    confinement_violation = self._build_confinement_error(dep_conf)
+                                    bundle = None
+                                else:
+                                    raise
 
-                            for rel_path in candidate_rels:
-                                dep_path = (project_root / rel_path).resolve()
-                                if dep_path.is_file():
-                                    try:
-                                        dep_raw = dep_path.read_text(encoding="utf-8")
-                                    except UnicodeDecodeError:
-                                        dep_raw = "\x00<corrupted_utf8_observation>"
-                                    if dep_raw not in raw_sources_list:
-                                        raw_sources_list.append(dep_raw)
+                            if confinement_violation is not None:
+                                result = confinement_violation
+                            else:
+                                raw_sources_list: list[str] = [target_raw]
+                                candidate_rels = list(bundle.entries.keys())
+                                try:
+                                    for rel_p, dist in firewall.graph.get_distances(target_file).items():
+                                        if dist <= 3 and rel_p not in candidate_rels:
+                                            candidate_rels.append(rel_p)
+                                except Exception:
+                                    pass
 
-                            result = self._enforce_sara_observation(
-                                tool_name="resolve_context_bundle",
-                                output_text=bundle.to_prompt(),
-                                raw_sources=tuple(raw_sources_list),
-                                session_id=session_id,
-                                user_prompt=str(user_prompt),
-                            )
+                                for rel_path in candidate_rels:
+                                    raw_dep = project_root / rel_path
+                                    dep_conf = is_component_confined(
+                                        raw_dep, [project_root], follow_symlinks=False
+                                    )
+                                    if not dep_conf.allowed:
+                                        if guard_store is not None:
+                                            try:
+                                                guard_store.record_confinement_check(
+                                                    guard_server_id,
+                                                    "resolve_context_bundle",
+                                                    str(raw_dep),
+                                                    dep_conf,
+                                                )
+                                            except Exception:
+                                                pass
+                                        self._record_security_trace(
+                                            session_id=session_id,
+                                            user_prompt=user_prompt,
+                                            plan_summary="MCP Guard blocked escaped dependency during resolve_context_bundle",
+                                            tool_or_file="mcp_guard.confinement",
+                                            payload=dep_conf.reason,
+                                        )
+                                        confinement_violation = self._build_confinement_error(dep_conf)
+                                        break
+                                    dep_path = Path(dep_conf.resolved_path or raw_dep).resolve()
+                                    if dep_path.is_file():
+                                        try:
+                                            dep_raw = dep_path.read_text(encoding="utf-8")
+                                        except UnicodeDecodeError:
+                                            dep_raw = "\x00<corrupted_utf8_observation>"
+                                        if dep_raw not in raw_sources_list:
+                                            raw_sources_list.append(dep_raw)
+
+                                if confinement_violation is not None:
+                                    result = confinement_violation
+                                else:
+                                    result = self._enforce_sara_observation(
+                                        tool_name="resolve_context_bundle",
+                                        output_text=bundle.to_prompt(),
+                                        raw_sources=tuple(raw_sources_list),
+                                        session_id=session_id,
+                                        user_prompt=str(user_prompt),
+                                    )
 
             elif tool_name == "evaluate_spec_axioms":
                 brief_text = arguments.get("brief_text")
@@ -1961,11 +2734,11 @@ class MCPServer:
                             if not header or header.strip() == "":
                                 break
                         body = sys.stdin.read(content_length)
-                        output = self.process_raw_line(body)
                     except Exception as e:
                         sys.stderr.write(f"Framing error: {e}\n")
                         sys.stderr.flush()
                         continue
+                    output = self.process_raw_line(body)
                 else:
                     # Standard line-delimited JSON-RPC
                     output = self.process_raw_line(line)
@@ -1997,6 +2770,16 @@ class MCPServer:
             if self._swegate_store is not None:
                 try:
                     self._swegate_store.close()
+                except Exception:
+                    pass
+            if self._mcp_guard_store is not None:
+                try:
+                    self._mcp_guard_store.close()
+                except Exception:
+                    pass
+            if self._pasac_store is not None:
+                try:
+                    self._pasac_store.close()
                 except Exception:
                     pass
 

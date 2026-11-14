@@ -3,6 +3,8 @@
 src/ctxfw/installer.py — Zero-Touch Industrialization & Diagnostics Engine
 Axiom Manifest Hash: f1e4295bef2f28f87c0364875bba0ea956fa38bdb1bcf0fb0671f4b4242d1a6e
 manifest_hash_v41_dante: 4a446cfc7aa488cc2b193750e694b95f5b66d694387ecd5b66d2090c0303f6be
+manifest_hash_wave1a: 4b3c6d65f2aeffd4fcfd8ecf166c4983ef94b046d3c9b7fd5e391811d32a5d82
+manifest_hash_wave1b: ebbcd0d607fa09a71dda690ea76104d762b3f279cde258f64917421d39a249f4
 
 Provides zero-touch onboarding, idempotent IDE configuration injection,
 multiplatform pre-commit hook deployment, and comprehensive self-diagnostics.
@@ -1318,6 +1320,12 @@ def run_doctor(project_root: Optional[Path] = None) -> DoctorReport:
         finops_rows = _safe_count(tokens_db, "telemetry_ledger")
         rules_logs = _safe_count(rules_db, "rule_enforcement_logs")
         swegate_evals = _safe_count(swegate_db, "swe_gate_patch_evaluations")
+        mcp_guard_db = cache_dir / "mcp_guard.db"
+        mcg_pins = _safe_count(mcp_guard_db, "mcp_tool_pins")
+        mcg_quarantines = _safe_count(mcp_guard_db, "poisoning_quarantine")
+        pasac_db = cache_dir / "pasac.db"
+        pasac_decisions = _safe_count(pasac_db, "pep_enforcement_decisions")
+        pasac_quarantines = _safe_count(pasac_db, "assurance_breach_quarantine")
 
         if tokencast_turns == 0 and finops_rows > 0:
             try:
@@ -1347,7 +1355,9 @@ def run_doctor(project_root: Optional[Path] = None) -> DoctorReport:
                 status="OK",
                 details=(
                     f"SARA scans: {sara_scans} | TokenCast turns: {tokencast_turns} "
-                    f"(FinOps rows: {finops_rows}) | Rules: {rules_logs} | SWE-Gate: {swegate_evals}."
+                    f"(FinOps rows: {finops_rows}) | Rules: {rules_logs} | SWE-Gate: {swegate_evals} "
+                    f"| MCPGuard pins: {mcg_pins} (quarantined: {mcg_quarantines}) "
+                    f"| PASAC PEP: {pasac_decisions} (quarantined: {pasac_quarantines})."
                 ),
             )
         )
@@ -1405,20 +1415,48 @@ def run_doctor(project_root: Optional[Path] = None) -> DoctorReport:
                 )
             )
 
-        # Check 8: Project MCP Perimeter (.mcp.json)
+        # Check 8: Project MCP Perimeter (.mcp.json & MCP Guard Poison Audit)
         mcp_candidates = [
             resolved_root / ".mcp.json",
             resolved_root / ".gemini" / "config" / "mcp_config.json",
         ]
-        has_mcp = any(m.is_file() for m in mcp_candidates)
-        if has_mcp:
-            checks.append(
-                DoctorCheckResult(
-                    name="Project MCP Perimeter",
-                    status="OK",
-                    details=f"MCP configuration found in {resolved_root.name}.",
+        existing_mcp = [m for m in mcp_candidates if m.is_file()]
+        if existing_mcp:
+            from ctxfw.mcp_guard.contracts import scan_mcp_config_perimeter
+
+            poison_findings: List[str] = []
+            parse_errors: List[str] = []
+            for cfg_file in existing_mcp:
+                try:
+                    raw_cfg = cfg_file.read_text(encoding="utf-8")
+                    cfg_obj = json.loads(raw_cfg) if raw_cfg.strip() else {}
+                    if not isinstance(cfg_obj, dict):
+                        parse_errors.append(f"{cfg_file.name}: root JSON must be an object")
+                        continue
+                    for f in scan_mcp_config_perimeter(cfg_obj):
+                        poison_findings.append(f"{f.server_id}({f.vector})")
+                except Exception as exc:
+                    parse_errors.append(f"{cfg_file.name}: {exc}")
+
+            if parse_errors or poison_findings:
+                issues = parse_errors + poison_findings
+                checks.append(
+                    DoctorCheckResult(
+                        name="Project MCP Perimeter",
+                        status="FAIL",
+                        details=f"MCP Guard blocked perimeter issues in {resolved_root.name}: {'; '.join(issues[:5])}.",
+                        remediation="Remove poisoned/unsandboxed entries or repair malformed JSON in .mcp.json.",
+                    )
                 )
-            )
+            else:
+                names = ", ".join(m.name for m in existing_mcp)
+                checks.append(
+                    DoctorCheckResult(
+                        name="Project MCP Perimeter",
+                        status="OK",
+                        details=f"Verified MCP perimeter ({names}) in {resolved_root.name} (0 poisoning findings).",
+                    )
+                )
         else:
             checks.append(
                 DoctorCheckResult(
@@ -1426,6 +1464,77 @@ def run_doctor(project_root: Optional[Path] = None) -> DoctorReport:
                     status="WARN",
                     details=f"No local .mcp.json detected in {resolved_root.name}.",
                     remediation="Add .mcp.json or run 'ctxfw init' to configure MCP server integration.",
+                )
+            )
+
+        # Check 8b: PASAC 6-Layer Boundary Assurance Preflight (#18 SIG-97ba08207eca7295)
+        try:
+            import sqlite3
+            from ctxfw.sara.assurance import assess_runtime_isolation_posture
+            from ctxfw.storage.cache import get_canonical_cache_path
+
+            parsed_mcp_cfgs: List[Dict[str, Any]] = []
+            for cfg_file in existing_mcp:
+                try:
+                    raw_cfg = cfg_file.read_text(encoding="utf-8")
+                    cfg_obj = json.loads(raw_cfg) if raw_cfg.strip() else {}
+                    if isinstance(cfg_obj, dict):
+                        parsed_mcp_cfgs.append(cfg_obj)
+                except Exception:
+                    pass
+
+            check_status_map = {c.name: c.status for c in checks}
+            wal_ok = check_status_map.get("SQLite WAL Cache & Concurrency") != "FAIL"
+            tk_ok = check_status_map.get("TraceKit Ledger Audit") != "FAIL"
+            sieve_ok = check_status_map.get("Axiomatic Sieve Engine") == "OK"
+            mcg_q_cnt = 0
+            try:
+                mg_db = Path(get_canonical_cache_path()).parent / "mcp_guard.db"
+                if mg_db.is_file():
+                    with sqlite3.connect(str(mg_db), timeout=2.0) as _mc:
+                        _r = _mc.execute("SELECT COUNT(*) FROM poisoning_quarantine").fetchone()
+                        mcg_q_cnt = int(_r[0] or 0) if _r else 0
+            except Exception:
+                mcg_q_cnt = 0
+
+            posture = assess_runtime_isolation_posture(
+                session_id=f"PASAC-PROJ-{resolved_root.name.upper()[:24]}",
+                mcp_configs=parsed_mcp_cfgs,
+                wal_healthy=wal_ok,
+                tracekit_intact=tk_ok,
+                sieve_verified=sieve_ok,
+                mcp_guard_quarantined_count=mcg_q_cnt,
+            )
+            if posture.passed:
+                checks.append(
+                    DoctorCheckResult(
+                        name="PASAC Boundary Assurance",
+                        status="OK",
+                        details=(
+                            f"Pre-flight VALID (A_min={posture.conservative_assurance:.2f}, "
+                            f"egress={posture.contract.egress_mode.value}, cross_run_writable=False)."
+                        ),
+                    )
+                )
+            else:
+                checks.append(
+                    DoctorCheckResult(
+                        name="PASAC Boundary Assurance",
+                        status="FAIL",
+                        details=(
+                            f"PASAC preflight FAILED (A_min={posture.conservative_assurance:.2f}): "
+                            f"{'; '.join(posture.findings[:3]) or 'boundary floor violated'}."
+                        ),
+                        remediation="Isolate non-loopback egress / cross_run_writable channels and resolve active quarantines.",
+                    )
+                )
+        except Exception as pasac_exc:
+            checks.append(
+                DoctorCheckResult(
+                    name="PASAC Boundary Assurance",
+                    status="FAIL",
+                    details=f"PASAC boundary assurance evaluation error: {pasac_exc}",
+                    remediation="Verify ctxfw.sara.assurance installation.",
                 )
             )
 
