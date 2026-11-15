@@ -75,3 +75,43 @@ src/ctxfw/sara/assurance_schema.sql -text
 src/ctxfw/sara/assurance_store.py -text
 tests/test_pasac_assurance.py -text
 
+# Wave 1 Block C: TraceLite (#12) & Sandbox Snapshot Rollback (#17)
+src/ctxfw/proxy.py -text
+src/ctxfw/core/pruner.py -text
+src/ctxfw/core/polyglot.py -text
+src/ctxfw/core/topological.py -text
+src/ctxfw/storage/__init__.py -text
+src/ctxfw/storage/cache.py -text
+src/ctxfw/storage/snapshot_schema.sql -text
+src/ctxfw/storage/snapshots.py -text
+src/ctxfw/tracelite/__init__.py -text
+src/ctxfw/tracelite/contracts.py -text
+src/ctxfw/tracelite/reducer.py -text
+src/ctxfw/tracelite/schema.sql -text
+src/ctxfw/tracelite/store.py -text
+tests/test_tracelite_reducer.py -text
+tests/test_snapshot_rollback.py -text
+
+# Hardening C.1: CLI exit propagation & Doctor stdio probe
+src/ctxfw/cli/main.py -text
+src/ctxfw/installer.py -text
+tests/test_installer_and_doctor.py -text
+
+# Wave 2 Block D: Task-Scoped Auth (#07/#08/#10) & Cadence AIMD Scheduler (#19)
+src/ctxfw/sara/__init__.py -text
+src/ctxfw/sara/lexical.py -text
+src/ctxfw/sara/induction.py -text
+src/ctxfw/sara/task_auth.py -text
+src/ctxfw/sara/task_auth_schema.sql -text
+src/ctxfw/sara/task_auth_store.py -text
+src/ctxfw/mcp_guard/contracts.py -text
+src/ctxfw/mcp.py -text
+src/ctxfw/budget/__init__.py -text
+src/ctxfw/budget/cadence.py -text
+src/ctxfw/budget/cadence_schema.sql -text
+src/ctxfw/budget/cadence_store.py -text
+src/ctxfw/proxy.py -text
+SPEC.axioms.md -text
+tests/test_task_auth.py -text
+tests/test_cadence_scheduler.py -text
+

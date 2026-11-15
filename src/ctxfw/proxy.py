@@ -1,6 +1,8 @@
 """
 src/ctxfw/proxy.py — Perimeter Reverse Proxy Service (v3.5.0)
 Manifest Hash: 22765740d4ee59328c52f4259f862ac6c389a2cb8d863021cf64fd0027f22310
+manifest_hash_wave1c: 00743e30ed7cee52140a1538a8622aeccb12a6c524adc80d875ab067bd39f762
+manifest_hash_wave2d2: 34ae93e3f71bcaab59019e9e0139a4b24b69b82c2005b25e5049329f84b1aa2c
 Transparent HTTP reverse proxy implementing the Fail-Open Context Firewall policy
 for OpenAI (/v1/chat/completions) and Anthropic (/v1/messages) protocols.
 Enforces FinOps Policy Governance (model clamping, token caps, thinking budget, circuit breaker).
@@ -37,6 +39,8 @@ from ctxfw.storage.telemetry import (
     get_or_create_dev_uuid,
     push_telemetry_heartbeat,
 )
+from ctxfw.tracelite.contracts import AgentObservationStep, TraceReducerPolicy
+from ctxfw.tracelite.reducer import TraceLiteReducer, is_edit_action
 
 
 app = FastAPI(
@@ -91,6 +95,124 @@ def get_telemetry_ledger(custom_app: Optional[FastAPI] = None) -> TelemetryLedge
     if not hasattr(target_app.state, "telemetry_ledger") or target_app.state.telemetry_ledger is None:
         target_app.state.telemetry_ledger = TelemetryLedger()
     return target_app.state.telemetry_ledger
+
+
+def get_cadence_store(custom_app: Optional[FastAPI] = None):
+    """Lazily initialize CadenceStore bound to CTXFW_CADENCE_DB or current cache directory."""
+    from pathlib import Path
+    from ctxfw.budget.cadence_store import CadenceStore
+    from ctxfw.storage.cache import get_canonical_cache_path
+
+    target_app = custom_app or app
+    env_db = os.environ.get("CTXFW_CADENCE_DB")
+    if env_db:
+        desired_path = Path(env_db)
+    else:
+        cache = get_cache(target_app)
+        cache_db = getattr(cache, "db_path", None)
+        if cache_db and str(cache_db) != ":memory:":
+            desired_path = Path(cache_db).parent / "cadence.db"
+        else:
+            desired_path = Path(get_canonical_cache_path()).parent / "cadence.db"
+
+    existing = getattr(target_app.state, "cadence_store", None)
+    existing_path = getattr(existing, "_db_path", None) if existing is not None else None
+    if existing is None or existing_path != desired_path or getattr(existing, "_conn", None) is None:
+        if existing is not None:
+            try:
+                existing.close()
+            except Exception:
+                pass
+        target_app.state.cadence_store = CadenceStore(desired_path)
+    return target_app.state.cadence_store
+
+
+def evaluate_proxy_cadence(
+    custom_app: Optional[FastAPI],
+    raw_body: Dict[str, Any],
+    compacted_body: Dict[str, Any],
+    *,
+    tokens_saved: int,
+    request: Optional[Request] = None,
+) -> Dict[str, str]:
+    """Deterministically evaluate AIMD cadence (#19) with zero auxiliary LLMs."""
+    try:
+        from ctxfw.budget.cadence import (
+            SchedulerConfig,
+            TrajectoryStepProposal,
+            compute_token_leverage,
+            extract_deterministic_cadence_signals,
+            TokenLeverageTelemetry,
+        )
+
+        target_app = custom_app or app
+        req_headers = request.headers if request is not None else {}
+        session_id = (
+            req_headers.get("X-Context-Firewall-Session")
+            or str(raw_body.get("session_id") or "")
+            or "SES-proxy-default"
+        )[:128]
+        run_id = (
+            req_headers.get("X-Context-Firewall-Run")
+            or str(raw_body.get("cadence_run_id") or "")
+            or f"RUN-{session_id}"
+        )[:128]
+        scaffold_hdr = req_headers.get("X-Context-Firewall-Scaffold")
+
+        est_orig = estimate_payload_tokens(raw_body)
+        est_comp = estimate_payload_tokens(compacted_body)
+        scaffold, step_idx, signals = extract_deterministic_cadence_signals(
+            raw_body,
+            tokens_saved=tokens_saved,
+            estimated_tokens=est_orig,
+            trace_signals=getattr(target_app.state, "trace_signals", None),
+            tokencast_signals=getattr(target_app.state, "tokencast_signals", None),
+            scaffold_override=scaffold_hdr,
+        )
+
+        config = getattr(target_app.state, "cadence_config", None)
+        if not isinstance(config, SchedulerConfig):
+            config = SchedulerConfig(scaffold_type=scaffold)
+        elif str(config.scaffold_type) != str(scaffold):
+            config = config.model_copy(update={"scaffold_type": scaffold})
+
+        store = get_cadence_store(target_app)
+        snap = store.ensure_run(run_id=run_id, session_id=session_id, config=config)
+        effective_last = -1 if step_idx < snap.last_inspection_step else snap.last_inspection_step
+        proposal = TrajectoryStepProposal(
+            proposal_id=f"PROP-{run_id}-{step_idx}-occ{snap.occ_version}",
+            run_id=run_id,
+            session_id=session_id,
+            scaffold_type=scaffold,
+            step_index=step_idx,
+            last_inspection_step=effective_last,
+            current_interval=snap.current_interval,
+            action_summary=f"proxy_step:{len(raw_body.get('messages', []) if isinstance(raw_body.get('messages'), list) else [])}",
+            signals=signals,
+        )
+        verdict = store.evaluate_and_record_step(
+            proposal=proposal,
+            config=config,
+            snapshot_store=getattr(target_app.state, "snapshot_store", None),
+            snapshot_run_id=signals.snapshot_run_id,
+            cache=get_cache(target_app),
+        )
+        leverage = TokenLeverageTelemetry(
+            run_id=run_id,
+            step_index=step_idx,
+            tokens_without_guidance=est_orig,
+            tokens_with_guidance=est_comp,
+            token_leverage_ratio=compute_token_leverage(est_orig, est_comp),
+        )
+        store.record_token_leverage(leverage)
+        return {
+            "X-Cadence-Verdict": verdict.verdict.value,
+            "X-Cadence-Interval": str(verdict.next_interval),
+            "X-Cadence-Action-Executed": str(verdict.action_executed),
+            "X-Cadence-Category": verdict.category.value,
+        }
+    except Exception:
+        return {}
 
 
 def compact_code_snippet(
@@ -153,15 +275,264 @@ def compact_code_snippet(
         return code, 0
 
 
+_SERIALIZED_STEP_RE = re.compile(
+    r"(?:^|\n)(?:\[STEP\s+(?P<idx1>\d+)\]|###\s*Step\s+(?P<idx2>\d+))\s*"
+    r"Action:\s*(?P<action>[^\n]+)\n"
+    r"Observation:\s*\n?(?P<obs>.*?)(?=(?:\n(?:\[STEP\s+\d+\]|###\s*Step\s+\d+)\s*Action:)|\Z)",
+    re.DOTALL,
+)
+
+
+def _extract_target_resource(args_obj: Any) -> Optional[str]:
+    if isinstance(args_obj, str):
+        try:
+            args_obj = json.loads(args_obj)
+        except Exception:
+            return None
+    if isinstance(args_obj, dict):
+        for key in ("target_file", "file_path", "TargetFile", "AbsolutePath", "path", "file", "filename"):
+            val = args_obj.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return None
+
+
+def reduce_serialized_trace_text(
+    text: str,
+    cache: Optional[LocalSemanticCache] = None,
+    policy: Optional[TraceReducerPolicy] = None,
+) -> Tuple[str, int]:
+    """
+    Detects explicit multi-step agent trace blocks ([STEP N] Action: ... Observation: ...)
+    and applies deterministic TraceLite reduction without touching newest O_s or actions a_i.
+    """
+    if not text or ("Action:" not in text or "Observation:" not in text):
+        return text, 0
+    matches = list(_SERIALIZED_STEP_RE.finditer(text))
+    if len(matches) < 2:
+        return text, 0
+
+    steps: list[AgentObservationStep] = []
+    for pos, m in enumerate(matches):
+        idx_raw = m.group("idx1") or m.group("idx2") or str(pos)
+        action = m.group("action").strip()
+        obs = m.group("obs").rstrip("\r\n")
+        steps.append(
+            AgentObservationStep(
+                step_index=int(idx_raw),
+                action_invocation=action,
+                observation_text=obs,
+                is_edit_action=is_edit_action(action),
+                target_resource=None,
+            )
+        )
+
+    reducer = TraceLiteReducer(policy=policy, cache=cache)
+    window, _transitions, _incidents = reducer.reduce(
+        trajectory_id=f"proxy-text-{len(steps)}",
+        steps=steps,
+    )
+    if window.tokens_saved <= 0:
+        return text, 0
+
+    out_parts: list[str] = []
+    cursor = 0
+    for pos, m in enumerate(matches):
+        out_parts.append(text[cursor : m.start()])
+        reduced_step = window.steps[pos]
+        tag = f"[STEP {reduced_step.step_index}]" if m.group("idx1") is not None else f"### Step {reduced_step.step_index}"
+        out_parts.append(
+            f"{tag} Action: {reduced_step.action_invocation}\n"
+            f"Observation:\n{reduced_step.observation_text}"
+        )
+        cursor = m.end()
+    out_parts.append(text[cursor:])
+    return "".join(out_parts), window.tokens_saved
+
+
+def reduce_message_trajectory(
+    messages: list,
+    cache: Optional[LocalSemanticCache] = None,
+    policy: Optional[TraceReducerPolicy] = None,
+) -> Tuple[list, int, set[int]]:
+    """
+    Applies deterministic TraceLite trajectory reduction across multi-step OpenAI/Anthropic
+    tool observations in `messages` while preserving all actions a_i and newest observation O_s.
+    Returns (updated_messages, tokens_saved, tracelite_handled_msg_indices).
+    """
+    if not messages:
+        return messages, 0, set()
+
+    # Track assistant tool invocations by call_id -> (name, formatted_action, resource)
+    call_lookup: Dict[str, Tuple[str, str, Optional[str]]] = {}
+    slots: list[tuple[int, Optional[int], bool, AgentObservationStep]] = []
+
+    for msg_idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+
+        # OpenAI assistant tool_calls
+        if role == "assistant" and isinstance(msg.get("tool_calls"), list):
+            for tc in msg["tool_calls"]:
+                if not isinstance(tc, dict):
+                    continue
+                tc_id = str(tc.get("id") or "")
+                fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                fn_name = str(fn.get("name") or tc.get("name") or "tool_call")
+                args = fn.get("arguments", "")
+                res = _extract_target_resource(args)
+                action_str = f"{fn_name}({args})" if args else fn_name
+                if tc_id:
+                    call_lookup[tc_id] = (fn_name, action_str[:16000], res)
+
+        # Anthropic assistant tool_use blocks
+        content = msg.get("content")
+        if role == "assistant" and isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "tool_use":
+                    tu_id = str(part.get("id") or "")
+                    tu_name = str(part.get("name") or "tool_use")
+                    tu_input = part.get("input", {})
+                    res = _extract_target_resource(tu_input)
+                    action_str = f"{tu_name}({json.dumps(tu_input, sort_keys=True)})" if tu_input else tu_name
+                    if tu_id:
+                        call_lookup[tu_id] = (tu_name, action_str[:16000], res)
+
+        # OpenAI tool observation message
+        if role == "tool":
+            tc_id = str(msg.get("tool_call_id") or "")
+            fn_name, action_str, res = call_lookup.get(
+                tc_id,
+                (
+                    str(msg.get("name") or "tool"),
+                    str(msg.get("name") or f"tool:{tc_id or msg_idx}"),
+                    None,
+                ),
+            )
+            obs_text = ""
+            is_string_content = isinstance(content, str)
+            if is_string_content:
+                obs_text = content
+            elif isinstance(content, list):
+                text_bits = [
+                    p.get("text", "")
+                    for p in content
+                    if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+                ]
+                obs_text = "\n".join(text_bits)
+            slots.append((
+                msg_idx,
+                None,
+                is_string_content,
+                AgentObservationStep(
+                    step_index=len(slots),
+                    action_invocation=action_str or fn_name,
+                    observation_text=obs_text,
+                    is_edit_action=is_edit_action(fn_name),
+                    target_resource=res,
+                    message_index=msg_idx,
+                    tool_call_id=tc_id or None,
+                ),
+            ))
+            continue
+
+        # Anthropic tool_result blocks inside user message content lists
+        if isinstance(content, list):
+            for part_idx, part in enumerate(content):
+                if isinstance(part, dict) and part.get("type") == "tool_result":
+                    tu_id = str(part.get("tool_use_id") or "")
+                    fn_name, action_str, res = call_lookup.get(
+                        tu_id,
+                        ("tool_result", f"tool_result:{tu_id or part_idx}", None),
+                    )
+                    tr_content = part.get("content")
+                    is_tr_str = isinstance(tr_content, str)
+                    if is_tr_str:
+                        obs_text = tr_content
+                    elif isinstance(tr_content, list):
+                        text_bits = [
+                            p.get("text", "")
+                            for p in tr_content
+                            if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+                        ]
+                        obs_text = "\n".join(text_bits)
+                    else:
+                        obs_text = ""
+                    slots.append((
+                        msg_idx,
+                        part_idx,
+                        is_tr_str,
+                        AgentObservationStep(
+                            step_index=len(slots),
+                            action_invocation=action_str or fn_name,
+                            observation_text=obs_text,
+                            is_edit_action=is_edit_action(fn_name),
+                            target_resource=res,
+                            message_index=msg_idx,
+                            tool_call_id=tu_id or None,
+                        ),
+                    ))
+
+    if len(slots) < 2:
+        return messages, 0, set()
+
+    steps = [slot[3] for slot in slots]
+    reducer = TraceLiteReducer(policy=policy, cache=cache)
+    window, _transitions, _incidents = reducer.reduce(
+        trajectory_id=f"proxy-msg-{len(steps)}",
+        steps=steps,
+    )
+    if window.tokens_saved <= 0:
+        return messages, 0, set()
+
+    updated_messages = [dict(m) if isinstance(m, dict) else m for m in messages]
+    handled_indices: set[int] = set()
+
+    for pos, (msg_idx, part_idx, _was_str, orig_step) in enumerate(slots):
+        reduced_obs = window.steps[pos].observation_text
+        handled_indices.add(msg_idx)
+        if reduced_obs == orig_step.observation_text:
+            continue
+        msg_obj = dict(updated_messages[msg_idx])
+        if part_idx is None:
+            # OpenAI role == 'tool'
+            if isinstance(msg_obj.get("content"), str):
+                msg_obj["content"] = reduced_obs
+            elif isinstance(msg_obj.get("content"), list):
+                msg_obj["content"] = [{"type": "text", "text": reduced_obs}]
+        else:
+            # Anthropic tool_result inside content list
+            parts = list(msg_obj.get("content", []))
+            tr_block = dict(parts[part_idx])
+            if isinstance(tr_block.get("content"), str):
+                tr_block["content"] = reduced_obs
+            else:
+                tr_block["content"] = [{"type": "text", "text": reduced_obs}]
+            parts[part_idx] = tr_block
+            msg_obj["content"] = parts
+        updated_messages[msg_idx] = msg_obj
+
+    return updated_messages, window.tokens_saved, handled_indices
+
+
 def compact_text_payload(
     text: str,
     cache: Optional[LocalSemanticCache] = None,
 ) -> Tuple[str, int]:
     """
-    Scans text for tagged file blocks or markdown code fences, compacting code blocks.
+    Scans text for multi-step agent traces, tagged file blocks, or markdown code fences,
+    applying deterministic TraceLite reduction and AST pruning.
     Returns (compacted_text, total_tokens_saved).
     """
-    if not text or "```" not in text:
+    if not text:
+        return text, 0
+
+    reduced_trace, trace_saved = reduce_serialized_trace_text(text, cache=cache)
+    if trace_saved > 0:
+        return reduced_trace, trace_saved
+
+    if "```" not in text:
         return text, 0
 
     total_saved = 0
@@ -293,9 +664,20 @@ def inspect_and_compact_payload(
 
     # Process "messages" array (OpenAI and Anthropic)
     if "messages" in compacted_body and isinstance(compacted_body["messages"], list):
+        reduced_msgs, trace_saved, tracelite_msg_indices = reduce_message_trajectory(
+            compacted_body["messages"],
+            cache=cache,
+        )
+        total_tokens_saved += trace_saved
+
         new_messages = []
-        for msg in compacted_body["messages"]:
+        for msg_idx, msg in enumerate(reduced_msgs):
             if not isinstance(msg, dict):
+                new_messages.append(msg)
+                continue
+
+            if msg_idx in tracelite_msg_indices and msg.get("role") == "tool":
+                # Tool observation already handled by TraceLite (protect newest O_s and markers).
                 new_messages.append(msg)
                 continue
 
@@ -307,7 +689,7 @@ def inspect_and_compact_payload(
                 new_msg["content"] = new_content
                 total_tokens_saved += saved
             elif isinstance(content, list):
-                # Anthropic or OpenAI multi-part content
+                # Anthropic or OpenAI multi-part content (never mutate tool_use / tool_result)
                 new_parts = []
                 for part in content:
                     if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str):
@@ -573,13 +955,13 @@ def list_models():
     }
 
 
-@app.post("/v1/chat/completions")
-async def chat_completions(
+async def _proxy_completion_request(
     request: Request,
     background_tasks: BackgroundTasks,
-    x_context_firewall_bypass: Optional[str] = Header(None, alias="X-Context-Firewall-Bypass"),
-):
-    """OpenAI-compatible chat completions proxy endpoint supporting full-duplex SSE streaming."""
+    x_context_firewall_bypass: Optional[str],
+    upstream_url: str,
+) -> Response:
+    """Shared Fail-Open / FinOps / TraceLite / Cadence completion pipeline."""
     t0 = time.perf_counter()
     raw_body = await request.json()
 
@@ -595,6 +977,7 @@ async def chat_completions(
         payload = raw_body
         tokens_saved = 0
         status_tag = "bypassed"
+        cadence_headers: Dict[str, str] = {}
     else:
         try:
             payload, tokens_saved = inspect_and_compact_payload(raw_body, cache)
@@ -607,25 +990,47 @@ async def chat_completions(
             tokens_saved = 0
             status_tag = "fail-open"
 
-    latency_ms = (time.perf_counter() - t0) * 1000
+        cadence_headers = evaluate_proxy_cadence(
+            request.app,
+            raw_body,
+            payload,
+            tokens_saved=tokens_saved,
+            request=request,
+        )
 
-    upstream_base = os.environ.get("UPSTREAM_BASE_URL", DEFAULT_OPENAI_UPSTREAM)
-    upstream_url = f"{upstream_base.rstrip('/')}/v1/chat/completions"
+    latency_ms = (time.perf_counter() - t0) * 1000
 
     extra_headers = {
         "X-Tokens-Saved": str(tokens_saved),
         "X-Firewall-Latency-Ms": f"{latency_ms:.3f}",
         "X-Firewall-Status": status_tag,
+        **cadence_headers,
     }
 
     if not bypass and tokens_saved >= 0:
         record_request_telemetry(request.app, raw_body, tokens_saved, background_tasks)
 
     resp = await forward_upstream(request, upstream_url, payload, extra_headers=extra_headers)
-    resp.headers["X-Tokens-Saved"] = str(tokens_saved)
-    resp.headers["X-Firewall-Latency-Ms"] = f"{latency_ms:.3f}"
-    resp.headers["X-Firewall-Status"] = status_tag
+    for k, v in extra_headers.items():
+        resp.headers[k] = v
     return resp
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_context_firewall_bypass: Optional[str] = Header(None, alias="X-Context-Firewall-Bypass"),
+):
+    """OpenAI-compatible chat completions proxy endpoint supporting full-duplex SSE streaming."""
+    upstream_base = os.environ.get("UPSTREAM_BASE_URL", DEFAULT_OPENAI_UPSTREAM)
+    upstream_url = f"{upstream_base.rstrip('/')}/v1/chat/completions"
+    return await _proxy_completion_request(
+        request=request,
+        background_tasks=background_tasks,
+        x_context_firewall_bypass=x_context_firewall_bypass,
+        upstream_url=upstream_url,
+    )
 
 
 @app.post("/v1/messages")
@@ -635,52 +1040,18 @@ async def messages_completion(
     x_context_firewall_bypass: Optional[str] = Header(None, alias="X-Context-Firewall-Bypass"),
 ):
     """Anthropic-compatible messages proxy endpoint supporting full-duplex SSE streaming."""
-    t0 = time.perf_counter()
-    raw_body = await request.json()
-
-    bypass = x_context_firewall_bypass is not None and x_context_firewall_bypass.lower() in {"true", "1"}
-    cache = get_cache(request.app)
-
-    if bypass:
-        if estimate_payload_tokens(raw_body) > 40000:
-            raise HTTPException(
-                status_code=413,
-                detail="FinOps Limit: Payload context exceeds 40k tokens",
-            )
-        payload = raw_body
-        tokens_saved = 0
-        status_tag = "bypassed"
-    else:
-        try:
-            payload, tokens_saved = inspect_and_compact_payload(raw_body, cache)
-            status_tag = "compacted" if tokens_saved > 0 else "pass-through"
-        except HTTPException:
-            raise
-        except Exception:
-            # Fail-open
-            payload = raw_body
-            tokens_saved = 0
-            status_tag = "fail-open"
-
-    latency_ms = (time.perf_counter() - t0) * 1000
-
-    upstream_base = os.environ.get("ANTHROPIC_UPSTREAM_BASE_URL") or os.environ.get("UPSTREAM_BASE_URL") or DEFAULT_ANTHROPIC_UPSTREAM
+    upstream_base = (
+        os.environ.get("ANTHROPIC_UPSTREAM_BASE_URL")
+        or os.environ.get("UPSTREAM_BASE_URL")
+        or DEFAULT_ANTHROPIC_UPSTREAM
+    )
     upstream_url = f"{upstream_base.rstrip('/')}/v1/messages"
-
-    extra_headers = {
-        "X-Tokens-Saved": str(tokens_saved),
-        "X-Firewall-Latency-Ms": f"{latency_ms:.3f}",
-        "X-Firewall-Status": status_tag,
-    }
-
-    if not bypass and tokens_saved >= 0:
-        record_request_telemetry(request.app, raw_body, tokens_saved, background_tasks)
-
-    resp = await forward_upstream(request, upstream_url, payload, extra_headers=extra_headers)
-    resp.headers["X-Tokens-Saved"] = str(tokens_saved)
-    resp.headers["X-Firewall-Latency-Ms"] = f"{latency_ms:.3f}"
-    resp.headers["X-Firewall-Status"] = status_tag
-    return resp
+    return await _proxy_completion_request(
+        request=request,
+        background_tasks=background_tasks,
+        x_context_firewall_bypass=x_context_firewall_bypass,
+        upstream_url=upstream_url,
+    )
 
 
 # =========================================================================

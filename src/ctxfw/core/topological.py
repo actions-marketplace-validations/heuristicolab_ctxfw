@@ -1,5 +1,7 @@
 # manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
 # manifest_hash_v41: c4a9e57cc11c29f1ab117e278bf71ddbcec97bf885c4973034a230b49821bc24
+# manifest_hash_wave1c: 00743e30ed7cee52140a1538a8622aeccb12a6c524adc80d875ab067bd39f762
+# manifest_hash_hardening_c1: aad104b6b66067be4bcce9ec6297c4de2822cf1d3c38a76e79e04cf147f62dd9
 """
 src/ctxfw/core/topological.py — Topological Dependency Graph & Context Firewall Engine (v4.1.0)
 manifest_hash: 11b623b097312b17d33c0ba6b7984b5a1954a133506e93dd813af794b22c0f0f
@@ -13,7 +15,8 @@ import ast
 from collections import deque
 import hashlib
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+import sys
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from pydantic import BaseModel, ConfigDict, Field
 
 from ctxfw.config import ContextDepthLevel, CtxfwConfigDTO, load_depth_config
@@ -315,6 +318,25 @@ class ContextFirewallEngine:
         self.graph = ProjectDependencyGraph(self.project_root)
         self.mode = mode
 
+    def invalidate_after_rollback(self, snapshot_id: Optional[str] = None) -> int:
+        """
+        Deterministically resets internal topological graph state, advances pruner
+        invalidation epochs, clears scoped L1/L2 caches, and blocks stale D3 herd reads.
+        """
+        self.graph = ProjectDependencyGraph(self.project_root)
+        reason = f"rollback:{snapshot_id or 'unknown'}"
+        DeterministicContextPruner.invalidate_cache(reason=reason)
+        poly_mod = sys.modules.get("ctxfw.core.polyglot")
+        if poly_mod is not None and hasattr(poly_mod, "TreeSitterContextPruner"):
+            poly_cls = getattr(poly_mod, "TreeSitterContextPruner")
+            if hasattr(poly_cls, "invalidate_cache"):
+                poly_cls.invalidate_cache(reason=reason)
+
+        inv_fn = getattr(self.cache, "invalidate_for_rollback", None)
+        if callable(inv_fn):
+            return int(inv_fn(project_root=self.project_root, snapshot_id=snapshot_id))
+        return 0
+
     def build_context(
         self,
         target_file: str | Path,
@@ -608,12 +630,26 @@ class ContextFirewallEngine:
                         continue
                 valid_candidates.append(rel_path)
 
+            is_stale_fn = getattr(self.cache, "is_stale_read_blocked", None)
+            stale_reads_blocked = bool(is_stale_fn(self.project_root)) if callable(is_stale_fn) else False
+            get_epoch_fn = getattr(self.cache, "get_rollback_epoch", None)
+            current_epoch = int(get_epoch_fn(self.project_root)) if callable(get_epoch_fn) else 0
             try:
                 cached_d3 = self.cache.get_d3_symbols_batch(
-                    valid_candidates, project_root=self.project_root
+                    valid_candidates,
+                    project_root=self.project_root,
+                    min_epoch=current_epoch,
                 )
             except TypeError:
-                cached_d3 = self.cache.get_d3_symbols_batch(valid_candidates)
+                if stale_reads_blocked:
+                    cached_d3 = {}
+                else:
+                    try:
+                        cached_d3 = self.cache.get_d3_symbols_batch(
+                            valid_candidates, project_root=self.project_root
+                        )
+                    except TypeError:
+                        cached_d3 = self.cache.get_d3_symbols_batch(valid_candidates)
 
             d3_lines: List[str] = [
                 "### AMBIENT MANIFEST [D3] (Zero-Syntax Symbol Index)",
@@ -621,6 +657,7 @@ class ContextFirewallEngine:
             ]
             total_symbols_count = 0
             parsed_count = 0
+            throttled_break = False
             total_chars = sum(len(line) + 1 for line in d3_lines)
             records_to_cache: List[Tuple[str, str, float, List[str]]] = []
 
@@ -646,9 +683,10 @@ class ContextFirewallEngine:
                 if not hit:
                     # AXIOM-18: throttle synchronous inline re-parsing to max 20 modules
                     if parsed_count >= 20:
-                        if depth_cfg.stale_reads_on_herd and rel_path in cached_d3:
+                        if depth_cfg.stale_reads_on_herd and not stale_reads_blocked and rel_path in cached_d3:
                             symbols = cached_d3[rel_path][2]
                         else:
+                            throttled_break = True
                             break
                     else:
                         code = full_path.read_text(encoding="utf-8", errors="replace")
@@ -678,10 +716,22 @@ class ContextFirewallEngine:
             if records_to_cache:
                 try:
                     self.cache.set_d3_symbols_batch(
-                        records_to_cache, project_root=self.project_root
+                        records_to_cache,
+                        project_root=self.project_root,
+                        rollback_epoch=current_epoch,
                     )
                 except TypeError:
-                    self.cache.set_d3_symbols_batch(records_to_cache)
+                    try:
+                        self.cache.set_d3_symbols_batch(
+                            records_to_cache, project_root=self.project_root
+                        )
+                    except TypeError:
+                        self.cache.set_d3_symbols_batch(records_to_cache)
+
+            if stale_reads_blocked and not throttled_break:
+                clear_stale_fn = getattr(self.cache, "clear_stale_read_block", None)
+                if callable(clear_stale_fn):
+                    clear_stale_fn(self.project_root)
 
             if len(d3_lines) > 2:
                 ambient_manifest_str = "\n".join(d3_lines)

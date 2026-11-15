@@ -2,6 +2,8 @@
 src/ctxfw/storage/cache.py — Persistent SQLite WAL Cache with XDG Resolution (v4.1.0)
 manifest_hash: 837e90a0d2d97f569f7190da2652d4e578efadf86b71d4a5c3020c6e16bf5bd3
 manifest_hash_v41_multirepo: 73a24a0ac04e9142a8ce9684758e0e947583f8bb96d8884503482686d6aba6e5
+manifest_hash_wave1c: 00743e30ed7cee52140a1538a8622aeccb12a6c524adc80d875ab067bd39f762
+manifest_hash_hardening_c1: aad104b6b66067be4bcce9ec6297c4de2822cf1d3c38a76e79e04cf147f62dd9
 
 Isolates storage paths into standard OS-specific directories (%LOCALAPPDATA%, ~/.cache, etc.)
 while preserving hermetic override capabilities (e.g. :memory: or custom paths for testing).
@@ -105,7 +107,12 @@ class LocalSemanticCache:
             self.db_path = str(db_path)
         self._conn: Optional[sqlite3.Connection] = None
         self._l1_cache: Dict[str, OptimizationResultDTO] = {}
+        self._l1_key_projects: Dict[str, str] = {}
         self._d3_l1_cache: Dict[str, Tuple[float, str, List[str]]] = {}
+        self._d3_l1_epochs: Dict[str, int] = {}
+        self._tracelite_l1_cache: Dict[Tuple[str, str, str], dict] = {}
+        self._rollback_epochs: Dict[str, int] = {}
+        self._stale_reads_blocked: Dict[str, bool] = {}
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -119,7 +126,10 @@ class LocalSemanticCache:
 
     def close(self):
         self._l1_cache.clear()
+        self._l1_key_projects.clear()
         self._d3_l1_cache.clear()
+        self._d3_l1_epochs.clear()
+        self._tracelite_l1_cache.clear()
         if self._conn is not None:
             try:
                 self._conn.close()
@@ -179,9 +189,82 @@ class LocalSemanticCache:
                 mtime REAL NOT NULL,
                 symbols_json TEXT NOT NULL,
                 symbol_count INTEGER NOT NULL,
+                rollback_epoch INTEGER NOT NULL DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        d3_cols = {row[1] for row in conn.execute("PRAGMA table_info(d3_symbol_index);").fetchall()}
+        if "rollback_epoch" not in d3_cols:
+            conn.execute(
+                "ALTER TABLE d3_symbol_index ADD COLUMN rollback_epoch INTEGER NOT NULL DEFAULT 0;"
+            )
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS cache_epoch_state (
+                project_id TEXT PRIMARY KEY,
+                rollback_epoch INTEGER NOT NULL DEFAULT 0,
+                stale_reads_blocked INTEGER NOT NULL DEFAULT 0,
+                last_snapshot_id TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tracelite_render_cache (
+                project_id TEXT NOT NULL DEFAULT 'GLOBAL',
+                source_sha256 TEXT NOT NULL,
+                policy_hash TEXT NOT NULL,
+                artifact_id TEXT NOT NULL,
+                canvas_width_px INTEGER NOT NULL,
+                canvas_height_px INTEGER NOT NULL,
+                patch_size_px INTEGER NOT NULL,
+                raw_text_tokens INTEGER NOT NULL,
+                optical_patch_tokens INTEGER NOT NULL,
+                effective_compression_k REAL NOT NULL,
+                char_similarity REAL NOT NULL,
+                rendered_digest TEXT NOT NULL,
+                compacted_payload TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (project_id, source_sha256, policy_hash)
+            );
+        """)
+        tl_cols = {row[1] for row in conn.execute("PRAGMA table_info(tracelite_render_cache);").fetchall()}
+        if "project_id" not in tl_cols:
+            conn.execute("""
+                CREATE TABLE tracelite_render_cache_v2 (
+                    project_id TEXT NOT NULL DEFAULT 'GLOBAL',
+                    source_sha256 TEXT NOT NULL,
+                    policy_hash TEXT NOT NULL,
+                    artifact_id TEXT NOT NULL,
+                    canvas_width_px INTEGER NOT NULL,
+                    canvas_height_px INTEGER NOT NULL,
+                    patch_size_px INTEGER NOT NULL,
+                    raw_text_tokens INTEGER NOT NULL,
+                    optical_patch_tokens INTEGER NOT NULL,
+                    effective_compression_k REAL NOT NULL,
+                    char_similarity REAL NOT NULL,
+                    rendered_digest TEXT NOT NULL,
+                    compacted_payload TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (project_id, source_sha256, policy_hash)
+                );
+            """)
+            conn.execute("""
+                INSERT INTO tracelite_render_cache_v2 (
+                    project_id, source_sha256, policy_hash, artifact_id,
+                    canvas_width_px, canvas_height_px, patch_size_px,
+                    raw_text_tokens, optical_patch_tokens, effective_compression_k,
+                    char_similarity, rendered_digest, compacted_payload, created_at
+                )
+                SELECT 'GLOBAL', source_sha256, policy_hash, artifact_id,
+                       canvas_width_px, canvas_height_px, patch_size_px,
+                       raw_text_tokens, optical_patch_tokens, effective_compression_k,
+                       char_similarity, rendered_digest, compacted_payload, created_at
+                FROM tracelite_render_cache;
+            """)
+            conn.execute("DROP TABLE tracelite_render_cache;")
+            conn.execute("ALTER TABLE tracelite_render_cache_v2 RENAME TO tracelite_render_cache;")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tracelite_render_project ON tracelite_render_cache(project_id);"
+        )
         conn.commit()
 
     @staticmethod
@@ -204,7 +287,7 @@ class LocalSemanticCache:
         conn = self._get_connection()
         cur = conn.cursor()
         cur.execute("""
-            SELECT pruned_code, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage, pruning_depth
+            SELECT pruned_code, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage, pruning_depth, project_id
             FROM tokens_cache WHERE cache_key = ?
         """, (cache_key,))
         row = cur.fetchone()
@@ -223,6 +306,8 @@ class LocalSemanticCache:
             depth=PruningDepth(row[5]) if len(row) > 5 and row[5] else PruningDepth.INTERFACE,
         )
         self._l1_cache[cache_key] = dto
+        if len(row) > 6 and row[6]:
+            self._l1_key_projects[cache_key] = str(row[6])
         return dto
 
     def attribute_project(
@@ -290,6 +375,7 @@ class LocalSemanticCache:
                     if len(existing) > 2 and existing[2] and existing[2] != "auto":
                         resolved_model = existing[2]
 
+            self._l1_key_projects[cache_key] = project_id
             conn.execute("""
                 INSERT OR REPLACE INTO tokens_cache 
                 (cache_key, pruned_code, pruning_depth, original_chars, pruned_chars, estimated_tokens_saved, savings_percentage, project_id, project_name, model_name)
@@ -320,16 +406,21 @@ class LocalSemanticCache:
         self,
         module_rel_paths: List[str],
         project_root: Optional[str | Path] = None,
+        min_epoch: Optional[int] = None,
     ) -> Dict[str, Tuple[float, str, List[str]]]:
         """
         Retrieves cached D3 symbol indices in a single batch query.
         When project_root is provided, keys are isolated by deterministic project_id
         so identical relative paths across different repositories never collide.
+        Entries stamped below the active rollback epoch are deterministically rejected.
         Returns dict: module_rel_path -> (mtime, sha256, symbols_list)
         """
         if not module_rel_paths:
             return {}
 
+        effective_min_epoch = (
+            self.get_rollback_epoch(project_root) if min_epoch is None else int(min_epoch)
+        )
         results: Dict[str, Tuple[float, str, List[str]]] = {}
         missing_scoped: List[str] = []
         scoped_to_rel: Dict[str, str] = {}
@@ -337,7 +428,10 @@ class LocalSemanticCache:
         for p in module_rel_paths:
             scoped = self._d3_scoped_key(p, project_root)
             scoped_to_rel[scoped] = p
-            if scoped in self._d3_l1_cache:
+            if (
+                scoped in self._d3_l1_cache
+                and self._d3_l1_epochs.get(scoped, 0) >= effective_min_epoch
+            ):
                 results[p] = self._d3_l1_cache[scoped]
             else:
                 missing_scoped.append(scoped)
@@ -348,14 +442,15 @@ class LocalSemanticCache:
         conn = self._get_connection()
         placeholders = ",".join("?" for _ in missing_scoped)
         sql = f"""
-            SELECT module_rel_path, mtime, sha256, symbols_json
+            SELECT module_rel_path, mtime, sha256, symbols_json, COALESCE(rollback_epoch, 0)
             FROM d3_symbol_index
             WHERE module_rel_path IN ({placeholders})
+              AND COALESCE(rollback_epoch, 0) >= ?
         """
         cur = conn.cursor()
-        cur.execute(sql, tuple(missing_scoped))
+        cur.execute(sql, tuple(missing_scoped) + (effective_min_epoch,))
         for row in cur.fetchall():
-            scoped_key, mtime, hsh, syms_json = row
+            scoped_key, mtime, hsh, syms_json, row_epoch = row
             orig_rel = scoped_to_rel.get(scoped_key, scoped_key)
             try:
                 symbols = json.loads(syms_json)
@@ -363,6 +458,7 @@ class LocalSemanticCache:
                     entry = (float(mtime), str(hsh), symbols)
                     results[orig_rel] = entry
                     self._d3_l1_cache[scoped_key] = entry
+                    self._d3_l1_epochs[scoped_key] = int(row_epoch)
             except Exception:
                 continue
         return results
@@ -371,6 +467,7 @@ class LocalSemanticCache:
         self,
         records: List[Tuple[str, str, float, List[str]]],
         project_root: Optional[str | Path] = None,
+        rollback_epoch: Optional[int] = None,
     ):
         """
         Persists a batch of D3 module symbols into SQLite WAL in a single atomic transaction.
@@ -379,10 +476,16 @@ class LocalSemanticCache:
         if not records:
             return
 
+        epoch = (
+            self.get_rollback_epoch(project_root)
+            if rollback_epoch is None
+            else int(rollback_epoch)
+        )
         payloads = []
         for mod, hsh, mtime, syms in records:
             scoped = self._d3_scoped_key(mod, project_root)
             self._d3_l1_cache[scoped] = (float(mtime), str(hsh), list(syms))
+            self._d3_l1_epochs[scoped] = epoch
             payloads.append(
                 (
                     scoped,
@@ -390,14 +493,293 @@ class LocalSemanticCache:
                     mtime,
                     json.dumps(syms),
                     len(syms),
+                    epoch,
                 )
             )
         conn = self._get_connection()
         conn.executemany("""
             INSERT OR REPLACE INTO d3_symbol_index
-            (module_rel_path, sha256, mtime, symbols_json, symbol_count)
-            VALUES (?, ?, ?, ?, ?)
+            (module_rel_path, sha256, mtime, symbols_json, symbol_count, rollback_epoch)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, payloads)
+        conn.commit()
+
+    def _epoch_key(self, project_root: Optional[str | Path]) -> str:
+        if project_root is None:
+            return "GLOBAL"
+        project_id, _ = resolve_project_identity(project_root)
+        return project_id
+
+    def get_rollback_epoch(self, project_root: Optional[str | Path] = None) -> int:
+        epoch_key = self._epoch_key(project_root)
+        if epoch_key in self._rollback_epochs:
+            return self._rollback_epochs[epoch_key]
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT rollback_epoch FROM cache_epoch_state WHERE project_id = ?",
+            (epoch_key,),
+        ).fetchone()
+        val = int(row[0]) if row else 0
+        self._rollback_epochs[epoch_key] = val
+        return val
+
+    def is_stale_read_blocked(self, project_root: Optional[str | Path] = None) -> bool:
+        epoch_key = self._epoch_key(project_root)
+        if epoch_key in self._stale_reads_blocked and self._stale_reads_blocked[epoch_key]:
+            return True
+        conn = self._get_connection()
+        row = conn.execute(
+            "SELECT stale_reads_blocked FROM cache_epoch_state WHERE project_id = ?",
+            (epoch_key,),
+        ).fetchone()
+        if row and int(row[0]) == 1:
+            self._stale_reads_blocked[epoch_key] = True
+            return True
+        if epoch_key != "GLOBAL":
+            global_blocked = self._stale_reads_blocked.get("GLOBAL")
+            if global_blocked:
+                return True
+            g_row = conn.execute(
+                "SELECT stale_reads_blocked FROM cache_epoch_state WHERE project_id = 'GLOBAL'"
+            ).fetchone()
+            if g_row and int(g_row[0]) == 1:
+                self._stale_reads_blocked["GLOBAL"] = True
+                return True
+        return False
+
+    def clear_stale_read_block(self, project_root: Optional[str | Path] = None) -> None:
+        epoch_key = self._epoch_key(project_root)
+        self._stale_reads_blocked[epoch_key] = False
+        epoch = self.get_rollback_epoch(project_root)
+        conn = self._get_connection()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO cache_epoch_state
+            (project_id, rollback_epoch, stale_reads_blocked, last_snapshot_id, updated_at)
+            VALUES (
+                ?,
+                ?,
+                0,
+                (SELECT last_snapshot_id FROM cache_epoch_state WHERE project_id = ?),
+                CURRENT_TIMESTAMP
+            )
+            """,
+            (epoch_key, epoch, epoch_key),
+        )
+        conn.commit()
+
+    def invalidate_for_rollback(
+        self,
+        project_root: Optional[str | Path] = None,
+        snapshot_id: Optional[str] = None,
+        clear_tracelite: bool = True,
+    ) -> int:
+        """
+        Deterministically evicts L1/L2 token cache, D3 symbol cache, and optical TraceLite
+        cache entries scoped to project_root (or globally if None), increments rollback_epoch,
+        and blocks stale_reads_on_herd until clean re-indexing finishes.
+        """
+        conn = self._get_connection()
+        cur = conn.cursor()
+        removed = 0
+
+        if project_root is None:
+            removed += len(self._l1_cache)
+            self._l1_cache.clear()
+            self._l1_key_projects.clear()
+            cur.execute("DELETE FROM tokens_cache")
+            removed += max(0, cur.rowcount)
+
+            removed += len(self._d3_l1_cache)
+            self._d3_l1_cache.clear()
+            self._d3_l1_epochs.clear()
+            cur.execute("DELETE FROM d3_symbol_index")
+            removed += max(0, cur.rowcount)
+            epoch_key = "GLOBAL"
+        else:
+            project_id, _ = resolve_project_identity(project_root)
+            epoch_key = project_id
+
+            l2_keys = {
+                r[0]
+                for r in cur.execute(
+                    "SELECT cache_key FROM tokens_cache WHERE project_id = ?",
+                    (project_id,),
+                ).fetchall()
+            }
+            l1_victim_keys = [
+                k
+                for k in list(self._l1_cache.keys())
+                if k in l2_keys or self._l1_key_projects.get(k) == project_id
+            ]
+            for k in l1_victim_keys:
+                self._l1_cache.pop(k, None)
+                self._l1_key_projects.pop(k, None)
+                removed += 1
+
+            cur.execute("DELETE FROM tokens_cache WHERE project_id = ?", (project_id,))
+            removed += max(0, cur.rowcount)
+
+            if project_id == "REPO-0000000000000000":
+                d3_l1_victims = [
+                    k for k in list(self._d3_l1_cache.keys()) if not k.startswith("REPO-")
+                ]
+                for k in d3_l1_victims:
+                    self._d3_l1_cache.pop(k, None)
+                    self._d3_l1_epochs.pop(k, None)
+                    removed += 1
+                cur.execute(
+                    "DELETE FROM d3_symbol_index WHERE module_rel_path NOT LIKE 'REPO-%::%'"
+                )
+            else:
+                prefix = f"{project_id}::"
+                d3_l1_victims = [
+                    k for k in list(self._d3_l1_cache.keys()) if k.startswith(prefix)
+                ]
+                for k in d3_l1_victims:
+                    self._d3_l1_cache.pop(k, None)
+                    self._d3_l1_epochs.pop(k, None)
+                    removed += 1
+                cur.execute(
+                    "DELETE FROM d3_symbol_index WHERE module_rel_path LIKE ?",
+                    (f"{prefix}%",),
+                )
+            removed += max(0, cur.rowcount)
+
+        if clear_tracelite:
+            if project_root is None:
+                removed += len(self._tracelite_l1_cache)
+                self._tracelite_l1_cache.clear()
+                cur.execute("DELETE FROM tracelite_render_cache")
+                removed += max(0, cur.rowcount)
+            else:
+                tl_victims = [
+                    k for k in list(self._tracelite_l1_cache.keys()) if k[0] == epoch_key
+                ]
+                for k in tl_victims:
+                    self._tracelite_l1_cache.pop(k, None)
+                    removed += 1
+                cur.execute(
+                    "DELETE FROM tracelite_render_cache WHERE project_id = ?",
+                    (epoch_key,),
+                )
+                removed += max(0, cur.rowcount)
+
+        next_epoch = self.get_rollback_epoch(project_root) + 1
+        self._rollback_epochs[epoch_key] = next_epoch
+        self._stale_reads_blocked[epoch_key] = True
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO cache_epoch_state
+            (project_id, rollback_epoch, stale_reads_blocked, last_snapshot_id, updated_at)
+            VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)
+            """,
+            (epoch_key, next_epoch, snapshot_id),
+        )
+        conn.commit()
+        return removed
+
+    def get_optical_artifact(
+        self,
+        source_sha256: str,
+        policy_hash: str,
+        project_root: Optional[str | Path] = None,
+    ) -> Optional[dict]:
+        project_id = self._epoch_key(project_root)
+        key = (project_id, source_sha256, policy_hash)
+        if key in self._tracelite_l1_cache:
+            return dict(self._tracelite_l1_cache[key])
+        conn = self._get_connection()
+        row = conn.execute(
+            """
+            SELECT artifact_id, source_sha256, policy_hash, canvas_width_px,
+                   canvas_height_px, patch_size_px, raw_text_tokens,
+                   optical_patch_tokens, effective_compression_k,
+                   char_similarity, rendered_digest, compacted_payload
+            FROM tracelite_render_cache
+            WHERE project_id = ? AND source_sha256 = ? AND policy_hash = ?
+            """,
+            (project_id, source_sha256, policy_hash),
+        ).fetchone()
+        if not row:
+            return None
+        record = {
+            "project_id": project_id,
+            "artifact_id": row[0],
+            "source_sha256": row[1],
+            "policy_hash": row[2],
+            "canvas_width_px": row[3],
+            "canvas_height_px": row[4],
+            "patch_size_px": row[5],
+            "raw_text_tokens": row[6],
+            "optical_patch_tokens": row[7],
+            "effective_compression_k": row[8],
+            "char_similarity": row[9],
+            "rendered_digest": row[10],
+            "compacted_payload": row[11],
+        }
+        self._tracelite_l1_cache[key] = record
+        return dict(record)
+
+    def set_optical_artifact(
+        self,
+        artifact_id: str,
+        source_sha256: str,
+        policy_hash: str,
+        canvas_width_px: int,
+        canvas_height_px: int,
+        patch_size_px: int,
+        raw_text_tokens: int,
+        optical_patch_tokens: int,
+        effective_compression_k: float,
+        char_similarity: float,
+        rendered_digest: str,
+        compacted_payload: str,
+        project_root: Optional[str | Path] = None,
+    ) -> None:
+        project_id = self._epoch_key(project_root)
+        record = {
+            "project_id": project_id,
+            "artifact_id": artifact_id,
+            "source_sha256": source_sha256,
+            "policy_hash": policy_hash,
+            "canvas_width_px": int(canvas_width_px),
+            "canvas_height_px": int(canvas_height_px),
+            "patch_size_px": int(patch_size_px),
+            "raw_text_tokens": int(raw_text_tokens),
+            "optical_patch_tokens": int(optical_patch_tokens),
+            "effective_compression_k": float(effective_compression_k),
+            "char_similarity": float(char_similarity),
+            "rendered_digest": rendered_digest,
+            "compacted_payload": compacted_payload,
+        }
+        self._tracelite_l1_cache[(project_id, source_sha256, policy_hash)] = record
+        conn = self._get_connection()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO tracelite_render_cache (
+                project_id, source_sha256, policy_hash, artifact_id, canvas_width_px,
+                canvas_height_px, patch_size_px, raw_text_tokens,
+                optical_patch_tokens, effective_compression_k,
+                char_similarity, rendered_digest, compacted_payload
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                source_sha256,
+                policy_hash,
+                artifact_id,
+                int(canvas_width_px),
+                int(canvas_height_px),
+                int(patch_size_px),
+                int(raw_text_tokens),
+                int(optical_patch_tokens),
+                float(effective_compression_k),
+                float(char_similarity),
+                rendered_digest,
+                compacted_payload,
+            ),
+        )
         conn.commit()
 
 
